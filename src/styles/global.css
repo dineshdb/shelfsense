@@ -1354,3 +1354,193 @@ select.f {
   font-variant-numeric: tabular-nums;
   font-size: 13px;
 }
+
+/* ---------- responsive: tablet >=768, desktop >=1100 ----------------------
+   Mobile (<768) is untouched. The view wrappers (homegrid / sellgrid /
+   scangrid / stockgrid / settingsgrid) are display:contents on mobile —
+   zero effect on the phone layout — and become grids on wide screens.
+   The bottom tab nav stays through tablet; at >=1100 the same .nav element
+   is re-positioned as a slim left rail under the sticky header (pure CSS,
+   no markup change). All colors ride the existing oklch tokens. */
+.homegrid,
+.sellgrid,
+.scangrid,
+.stockgrid,
+.settingsgrid {
+  display: contents;
+}
+
+@media (min-width: 768px) {
+  /* drop the phone-prop side borders; one centered container */
+  body {
+    border-left: 0;
+    border-right: 0;
+  }
+  .shell {
+    max-width: 720px;
+  }
+  main {
+    padding: 18px 18px 0;
+  }
+  .nav {
+    max-width: 720px;
+  }
+  .fab {
+    right: max(16px, calc(50% - 360px + 16px));
+  }
+
+  /* dashboard: cards flow in two columns; the chart takes the full row */
+  .homegrid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    align-items: start;
+    align-content: start;
+  }
+  .homegrid > .card {
+    margin-bottom: 0;
+  }
+  .homegrid > .span2 {
+    grid-column: 1 / -1;
+  }
+  .homegrid .chart {
+    max-width: 560px;
+    margin: 0 auto;
+  }
+  .hero {
+    padding: 20px 22px;
+  }
+}
+
+@media (min-width: 1100px) {
+  .shell {
+    max-width: 1100px;
+    padding-bottom: 32px;
+  }
+  main {
+    margin-left: 92px;
+    padding: 24px 28px 0;
+  }
+  /* first-run setup renders without the rail (nav hidden by JS) — stretch
+     its centered stage back across the full shell (92 rail + 28/28 main
+     padding) so the welcome card centers on the same axis as the header */
+  main > div[style*="min-height"] {
+    margin-left: -120px;
+    width: calc(100% + 148px);
+  }
+
+  /* the bottom tab bar becomes a slim left rail: same element, fixed just
+     under the sticky header, hugging the container's left edge */
+  .nav {
+    top: 62px;
+    bottom: 0;
+    left: calc(50% - 550px);
+    right: auto;
+    transform: none;
+    width: 92px;
+    max-width: none;
+    border-top: 0;
+    border-right: 1px solid var(--border);
+    padding: 14px 8px;
+    grid-template-columns: 1fr;
+    gap: 4px;
+    align-items: stretch;
+  }
+  .nav button {
+    padding: 9px 2px;
+  }
+  .nav .fabm {
+    margin: 0 auto;
+  }
+  .fab {
+    bottom: 32px;
+    right: max(28px, calc(50% - 550px + 28px));
+  }
+
+  .hero .big {
+    font-size: 36px;
+  }
+  .hstats div {
+    padding: 12px;
+  }
+  .homegrid {
+    gap: 14px;
+  }
+
+  /* sell: voice left, bill right (sticky while the voice column scrolls) */
+  .sellgrid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+    align-items: start;
+  }
+  .sellgrid > .card {
+    margin-bottom: 0;
+  }
+  .sellgrid > .card:last-child {
+    position: sticky;
+    top: 76px;
+    max-height: calc(100dvh - 92px);
+    overflow: auto;
+  }
+
+  /* scan: viewer left (sticky), detected products right */
+  .scangrid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+    align-items: start;
+  }
+  .scangrid > .card {
+    margin-bottom: 0;
+  }
+  .scangrid > .card:first-child {
+    position: sticky;
+    top: 76px;
+  }
+
+  /* stock: wide inventory table, movement ledger alongside */
+  .stockgrid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr);
+    gap: 14px;
+    align-items: start;
+  }
+  .stockgrid > .card {
+    margin-bottom: 0;
+  }
+
+  /* settings: cards in two columns; the footer strip spans the row */
+  .settingsgrid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+    align-items: start;
+  }
+  .settingsgrid > .card {
+    margin-bottom: 0;
+  }
+  .settingsgrid > .span2 {
+    grid-column: 1 / -1;
+  }
+
+  /* roomier rows and bill lines on a wide screen (mobile wrap unchanged) */
+  .it {
+    padding: 11px 14px;
+  }
+  .order {
+    padding: 12px 0;
+  }
+  .billline {
+    align-items: center;
+    gap: 14px;
+    padding: 12px 14px;
+  }
+  .billline input[type="checkbox"] {
+    margin-top: 0;
+  }
+  .billline .brow {
+    grid-template-columns: minmax(0, 1.2fr) 88px 88px;
+    gap: 10px;
+  }
+}
