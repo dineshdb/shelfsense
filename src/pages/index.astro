@@ -8,11 +8,35 @@ import "../styles/global.css";
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
-    <meta name="theme-color" content="#eef2f7">
+    <meta name="theme-color" content="#ffffff">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
     <title>ShelfSense AI · Smart Retail Assistant</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛒</text></svg>">
+    <script is:inline>
+      // Theme before first paint: the manual Light/Dark/System choice from
+      // localStorage, falling back to the OS (the Board pattern). The chrome
+      // colors track the design-system canvas.
+      (() => {
+        const paintChrome = (dark) => {
+          document.querySelector('meta[name="theme-color"]')
+            ?.setAttribute("content", dark ? "#010507" : "#ffffff");
+        };
+        let stored = null;
+        try { stored = localStorage.getItem("shelfsense:theme"); } catch {}
+        const prefersDark = matchMedia("(prefers-color-scheme: dark)").matches;
+        const dark = stored === "dark" || stored === "light" ? stored === "dark" : prefersDark;
+        document.documentElement.dataset.theme = dark ? "dark" : "light";
+        paintChrome(dark);
+        matchMedia("(prefers-color-scheme: dark)").addEventListener("change", (e) => {
+          let s = null;
+          try { s = localStorage.getItem("shelfsense:theme"); } catch {}
+          if (s === "dark" || s === "light") return;
+          document.documentElement.dataset.theme = e.matches ? "dark" : "light";
+          paintChrome(e.matches);
+        });
+      })();
+    </script>
     <script is:inline>
       /* Firebase web app config — paste from the Firebase console
          (Project settings → Your apps → Web app). Empty = local-only. */
@@ -259,7 +283,7 @@ const daysTxt = d => !isFinite(d) ? 'no recent sales' : d < 1 ? '< 1 day left' :
 const ago = ts => { const s = (Date.now() - ts) / 1000; return s < 60 ? 'just now' : s < 3600 ? Math.round(s / 60) + ' min ago' : s < 86400 ? Math.round(s / 3600) + ' h ago' : Math.round(s / 86400) + ' d ago'; };
 const emoji = p => { const n = Core.strip(p.name); for (const [re, e] of NAME_EMOJI) if (re.test(n)) return e; return CAT[p.category] || '📦'; };
 const prod = id => S.products.find(p => p.id === id);
-const color = s => ({ ok: 'var(--ok)', low: 'var(--warn)', out: 'var(--bad)', slow: 'var(--slow)' }[s]);
+const color = s => ({ ok: 'var(--ok)', low: 'var(--warn)', out: 'var(--bad)', slow: 'var(--chart-4)' }[s]);
 function toast(msg, type = '', ms = 3200) {
   const el = document.createElement('div'); el.className = 'toast ' + type; el.textContent = msg;
   $('#toasts').appendChild(el); setTimeout(() => el.remove(), ms);
@@ -273,15 +297,25 @@ const fileToURL = f => new Promise((res, rej) => { const r = new FileReader(); r
 const resize = (src, max = 1280) => new Promise((res, rej) => { const im = new Image(); im.onload = () => { const k = Math.min(1, max / Math.max(im.width, im.height)); const c = document.createElement('canvas'); c.width = Math.round(im.width * k); c.height = Math.round(im.height * k); c.getContext('2d').drawImage(im, 0, 0, c.width, c.height); res(c.toDataURL('image/jpeg', .85)); }; im.onerror = () => rej(new Error('Could not read image')); im.src = src; });
 function drawBoxes(cv, w, h, dets) {
   cv.width = w; cv.height = h; const x = cv.getContext('2d'); x.clearRect(0, 0, w, h);
-  const lw = Math.max(2, w / 260), fs = Math.max(14, w / 42); x.font = `800 ${fs}px Inter,system-ui,sans-serif`;
+  const lw = Math.max(2, w / 260), fs = Math.max(14, w / 42); x.font = `600 ${fs}px Inter,system-ui,sans-serif`;
+  // the Qreta chart ramp (design-system chart tokens, literal for canvas)
+  const PAL = [
+    ['oklch(0.596 0.145 163.225)', 'oklch(0.596 0.145 163.225 / 0.14)'],
+    ['oklch(0.52 0.105 223.128)', 'oklch(0.52 0.105 223.128 / 0.14)'],
+    ['oklch(0.508 0.118 165.612)', 'oklch(0.508 0.118 165.612 / 0.14)'],
+    ['oklch(0.72 0.14 75)', 'oklch(0.72 0.14 75 / 0.16)'],
+    ['oklch(0.432 0.095 166.913)', 'oklch(0.432 0.095 166.913 / 0.14)'],
+    ['oklch(0.577 0.245 27.325)', 'oklch(0.577 0.245 27.325 / 0.12)'],
+    ['oklch(0.56 0.021 213.5)', 'oklch(0.56 0.021 213.5 / 0.16)'],
+  ];
   dets.forEach((d, i) => {
     if (!d.box || d.box.length !== 4 || d.include === false) return;
     const [y0, x0, y1, x1] = d.box.map(Number), X = x0 / 1000 * w, Y = y0 / 1000 * h, W = (x1 - x0) / 1000 * w, H = (y1 - y0) / 1000 * h;
-    const col = ['#10b981', '#06b6d4', '#6366f1', '#f59e0b', '#ec4899', '#84cc16', '#f97316'][i % 7];
-    x.strokeStyle = col; x.lineWidth = lw; x.beginPath(); x.roundRect ? x.roundRect(X, Y, W, H, lw * 3) : x.rect(X, Y, W, H); x.stroke();
-    x.fillStyle = col + '22'; x.fill();
+    const col = PAL[i % PAL.length];
+    x.strokeStyle = col[0]; x.lineWidth = lw; x.beginPath(); x.roundRect ? x.roundRect(X, Y, W, H, lw * 3) : x.rect(X, Y, W, H); x.stroke();
+    x.fillStyle = col[1]; x.fill();
     const label = d.name + (d.count > 1 ? ' ×' + d.count : ''), tw = x.measureText(label).width + 14, ty = Math.max(0, Y - fs - 10);
-    x.fillStyle = col; x.fillRect(X, ty, tw, fs + 10); x.fillStyle = '#fff'; x.fillText(label, X + 7, ty + fs + 2);
+    x.fillStyle = col[0]; x.fillRect(X, ty, tw, fs + 10); x.fillStyle = '#fff'; x.fillText(label, X + 7, ty + fs + 2);
   });
 }
 const A = () => Core.analyze(S.products, S.moves, set());
@@ -366,10 +400,10 @@ function vHome() {
   o += `<div class="hero"><div class="row"><div><div class="g">${greet} · Today's sales</div><div class="big">${money(today.reduce((s, m) => s + m.total, 0))}</div>
     <div class="sm">${today.length} sales recorded today</div></div>
     <div class="ring" style="--p:${health}"><div><b>${health}%</b><small>Stock health</small></div></div></div>
-    <div class="hstats"><div><b>${money(s7.reduce((s, m) => s + m.total, 0))}</b><span>Revenue · 7d</span></div><div><b style="color:${low.length ? '#fca5a5' : '#6ee7b7'}">${low.length}</b><span>Need reorder</span></div><div><b>${money(stockVal)}</b><span>Stock value</span></div></div></div>`;
-  o += `<div class="qa"><button data-a="tab" data-v="scan"><span class="ic" style="background:linear-gradient(135deg,#10b981,#06b6d4)">${I.scan}</span>Scan shelf</button>
-    <button data-a="tab" data-v="sell"><span class="ic" style="background:linear-gradient(135deg,#06b6d4,#6366f1)">${I.mic}</span>Voice sale</button>
-    <button data-a="share" ${reorder.length ? '' : 'disabled style="opacity:.5"'}><span class="ic" style="background:linear-gradient(135deg,#6366f1,#a855f7)">${I.cart}</span>Order list</button></div>`;
+    <div class="hstats"><div><b>${money(s7.reduce((s, m) => s + m.total, 0))}</b><span>Revenue · 7d</span></div><div><b style="color:${low.length ? 'var(--bad)' : 'var(--ok)'}">${low.length}</b><span>Need reorder</span></div><div><b>${money(stockVal)}</b><span>Stock value</span></div></div></div>`;
+  o += `<div class="qa"><button data-a="tab" data-v="scan"><span class="ic">${I.scan}</span>Scan shelf</button>
+    <button data-a="tab" data-v="sell"><span class="ic">${I.mic}</span>Voice sale</button>
+    <button data-a="share" ${reorder.length ? '' : 'disabled style="opacity:.5"'}><span class="ic">${I.cart}</span>Order list</button></div>`;
   if (low.length) o += `<div class="card"><div class="ch"><h2><span class="ico t-bad">🚨</span>Low-stock alerts</h2><span class="sub">${low.length} item${low.length > 1 ? 's' : ''}</span></div><div class="list">${low.map(r => `
     <div class="it"><div class="em">${emoji(r.p)}</div><div class="mid"><div class="tt">${esc(r.p.name)}</div><div class="ss">${fq(r.p.stock, r.p.unit)} left · ${daysTxt(r.daysLeft)}</div>
     <div class="bar"><i style="width:${Math.max(4, Math.min(100, r.p.stock / Math.max(r.rop, .01) * 50))}%;background:${color(r.status)}"></i></div></div>
@@ -384,7 +418,7 @@ function vHome() {
   if (best.length) o += `<div class="card"><div class="ch"><h2><span class="ico t-ok">🏆</span>Best sellers</h2><span class="sub">revenue · 7 days</span></div><div class="list">${best.map((r, i) => `
     <div class="it"><div class="em">${['🥇', '🥈', '🥉', '4', '5'][i]}</div><div class="mid"><div class="tt">${esc(r.p.name)}</div>
     <div class="ss">${fq(r.qty7, r.p.unit)} sold · <b style="color:${r.trend >= 0 ? 'var(--ok)' : 'var(--bad)'}">${r.trend >= 0 ? '▲' : '▼'} ${Math.abs(Math.round(r.trend * 100))}%</b> vs avg</div>
-    <div class="bar"><i style="width:${r.rev7 / best[0].rev7 * 100}%;background:var(--grad)"></i></div></div><div class="rt"><b>${money(r.rev7)}</b></div></div>`).join('')}</div></div>`;
+    <div class="bar"><i style="width:${r.rev7 / best[0].rev7 * 100}%;background:var(--primary)"></i></div></div><div class="rt"><b>${money(r.rev7)}</b></div></div>`).join('')}</div></div>`;
   if (slow.length) o += `<div class="card"><div class="ch"><h2><span class="ico t-slow">🐢</span>Slow movers</h2><span class="sub">cash tied up</span></div><div class="list">${slow.map(r => `
     <div class="it"><div class="em">${emoji(r.p)}</div><div class="mid"><div class="tt">${esc(r.p.name)}</div><div class="ss">${fq(r.p.stock, r.p.unit)} in stock · ${r.lastSale ? 'last sold ' + ago(r.lastSale) : 'never sold'}</div></div>
     <div class="rt"><b>${money(r.p.stock * (r.p.cost || r.p.price * .75))}</b><div class="ss">${daysTxt(r.daysLeft)}</div></div></div>`).join('')}</div>
@@ -395,11 +429,11 @@ function vHome() {
 }
 function chart(s) {
   const W = 340, H = 150, pad = 18, max = Math.max(1, ...s.map(x => x.value)), bw = (W - pad) / s.length;
-  let g = `<svg viewBox="0 0 ${W} ${H + 18}"><defs><linearGradient id="bg1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#06b6d4"/><stop offset="1" stop-color="#10b981"/></linearGradient></defs>`;
-  [0, .5, 1].forEach(f => { const y = 6 + (H - 6) * (1 - f); g += `<line x1="${pad}" x2="${W}" y1="${y}" y2="${y}" stroke="#eef2f6"/><text x="0" y="${y + 3}">${Math.round(max * f)}</text>`; });
+  let g = `<svg viewBox="0 0 ${W} ${H + 18}">`;
+  [0, .5, 1].forEach(f => { const y = 6 + (H - 6) * (1 - f); g += `<line x1="${pad}" x2="${W}" y1="${y}" y2="${y}" stroke="var(--border)"/><text x="0" y="${y + 3}">${Math.round(max * f)}</text>`; });
   s.forEach((x, i) => {
     const bh = Math.max(2, (H - 6) * x.value / max), X = pad + i * bw + bw * .18, last = i === s.length - 1;
-    g += `<rect x="${X}" y="${H - bh}" width="${bw * .64}" height="${bh}" rx="4" fill="${last ? 'url(#bg1)' : '#cdeee6'}"><title>${x.label}: ${money(x.value)}</title></rect>`;
+    g += `<rect x="${X}" y="${H - bh}" width="${bw * .64}" height="${bh}" rx="4" fill="${last ? 'var(--primary)' : 'var(--muted)'}"><title>${x.label}: ${money(x.value)}</title></rect>`;
     if (i % 2 === (s.length - 1) % 2) g += `<text x="${X + bw * .32}" y="${H + 14}" text-anchor="middle">${x.label.split(' ').reverse().join(' ')}</text>`;
   });
   return g + '</svg>';
@@ -410,7 +444,7 @@ function vScan() {
   <div class="viewer">
     ${sc.camOn && !sc.image ? `<video id="video" playsinline muted autoplay></video><canvas id="liveCv"></canvas><span class="corner c1"></span><span class="corner c2"></span><span class="corner c3"></span><span class="corner c4"></span>${sc.live ? '' : '<div class="laser"></div>'}` : ''}
     ${sc.image ? `<img id="shot" src="${sc.image}"><canvas id="shotCv"></canvas>` : ''}
-    ${!sc.camOn && !sc.image ? `<div class="ph"><div class="scanico">${I.scan}</div><b style="color:#fff;font-size:15px">Point at a shelf</b><br>Use the live camera, a photo, a shelf video, or your ESP32-CAM.</div>` : ''}
+    ${!sc.camOn && !sc.image ? `<div class="ph"><div class="scanico">${I.scan}</div><b style="font-size:14.5px">Point at a shelf</b><br>Use the live camera, a photo, a shelf video, or your ESP32-CAM.</div>` : ''}
     ${sc.busy ? `<div class="busy"><div><div class="spin"></div>${esc(sc.status)}</div></div>` : ''}
   </div>`;
   o += !sc.camOn ? `<div class="g2 mt"><button class="btn pri" data-a="cam">🎥 Live camera</button><button class="btn sec" data-a="pick" data-v="photoIn">🖼️ Photos</button>
@@ -515,6 +549,12 @@ function vSettings() {
     </div>
     <button class="btn sec w mt" data-a="test">🔌 Test AI connection</button>
     <label class="lb">ESP32-CAM capture URL</label>${inp('espUrl', 'text', 'placeholder="http://192.168.1.50/capture"')}</div>
+  <div class="card"><div class="ch"><h2><span class="ico t-ind">◐</span>Theme</h2></div>
+    <div class="flex between"><span class="muted small">Follows your choice; Auto tracks the system.</span>
+      <div class="chips" role="group" aria-label="Theme">${[['auto', 'Auto'], ['light', 'Light'], ['dark', 'Dark']].map(([v, l]) => {
+        let cur = 'auto'; try { cur = localStorage.getItem("shelfsense:theme") || 'auto'; } catch {}
+        return `<button class="chip ${cur === v ? 'on' : ''}" data-a="theme" data-v="${v}">${l}</button>`;
+      }).join('')}</div></div></div>
   <div class="card"><div class="ch"><h2><span class="ico t-info">🎙️</span>Voice</h2></div>${tg('autoApply', 'Auto-record', 'Save immediately when every product is recognized')}${tg('speak', 'Spoken confirmation', 'Reads back the sale and low-stock warnings')}</div>
   <div class="card"><div class="ch"><h2><span class="ico t-warn">📊</span>Reorder rules</h2></div>
     <div class="g3"><div><label class="lb">Lead days</label>${inp('leadDays', 'number', 'min="0"')}</div><div><label class="lb">Cover days</label>${inp('coverDays', 'number', 'min="1"')}</div><div><label class="lb">Safety days</label>${inp('safetyDays', 'number', 'min="0"')}</div></div>
@@ -806,6 +846,14 @@ const ACT = {
   apply, cancelParse: () => { U.voice.parsed = null; render(); },
   undo: el => { const m = S.moves.find(x => x.id === el.dataset.v); if (!m) return; const p = prod(m.productId); if (p) p.stock = Math.max(0, +(p.stock - (m.delta ?? (m.type === 'sale' ? -m.qty : m.qty))).toFixed(3)); S.moves = S.moves.filter(x => x !== m); save(); render(); toast('↩️ Undone'); },
   setupMode: el => { U.setup.mode = el.dataset.v; U.setup.msg = ''; render(); },
+  theme: el => {
+    const v = el.dataset.v; // auto | light | dark (the Board pattern)
+    try { localStorage.setItem("shelfsense:theme", v); } catch {}
+    const dark = v === "dark" || (v !== "light" && matchMedia("(prefers-color-scheme: dark)").matches);
+    document.documentElement.dataset.theme = dark ? "dark" : "light";
+    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", dark ? "#010507" : "#ffffff");
+    render();
+  },
   setupSkip: () => { set().setupDone = true; save(); render(); toast('On-device mode — configure an AI backend anytime in Settings', 'warn', 5000); },
   setupTest: async () => {
     const st = U.setup;
