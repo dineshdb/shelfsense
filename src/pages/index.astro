@@ -279,7 +279,7 @@ const I = {
 let saved = {}; try { saved = JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) {}
 const S = { products: saved.products || [], moves: saved.moves || [], settings: Object.assign({}, DEF, saved.settings || {}) };
 const U = { tab: 'home', scan: { image: null, dets: [], busy: false, status: '', camOn: false, live: false, engine: '' },
-  voice: { listening: false, transcript: '', busy: false, bill: [], live: false }, inv: { q: '', cat: 'All', sort: 'name' }, ai: { busy: false, text: '' }, setup: { mode: 'gemini', busy: false, msg: '' }, edit: null };
+  voice: { listening: false, transcript: '', busy: false, bill: [], live: false, recording: false, rec: null }, inv: { q: '', cat: 'All', sort: 'name' }, ai: { busy: false, text: '' }, setup: { mode: 'gemini', busy: false, msg: '' }, edit: null };
 let stream = null, coco = null, liveTimer = null, rec = null;
 const save = () => {
   S.savedAt = Date.now();
@@ -352,6 +352,7 @@ async function aiCustom(parts, json = true) {
   let text = '';
   for (const p of parts) {
     if (p && p.inline_data) content.push({ type: 'image_url', image_url: { url: `data:${p.inline_data.mime_type};base64,${p.inline_data.data}` } });
+    else if (p && p.audio) content.push({ type: 'input_audio', input_audio: { data: p.audio.data, format: 'wav' } });
     else text += (p && p.text || String(p ?? '')) + '\n';
   }
   content.unshift({ type: 'text', text: text.trim() + (json ? '\nAnswer ONLY with JSON. No prose, no code fences.' : '') });
@@ -368,6 +369,7 @@ async function aiCustom(parts, json = true) {
   return json ? JSON.parse(t.replace(/```json|```/g, '').trim()) : t;
 }
 async function gemini(parts, json = true) {
+  parts = parts.map(p => p && p.audio ? { inline_data: { mime_type: 'audio/wav', data: p.audio.data } } : p);
   if (set().aiMode === 'custom' && set().aiBaseUrl) return aiCustom(parts, json);
   if (!set().apiKey) throw new Error('No AI backend configured');
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(set().model)}:generateContent?key=${encodeURIComponent(set().apiKey)}`;
@@ -375,6 +377,35 @@ async function gemini(parts, json = true) {
   if (!r.ok) { let m = 'HTTP ' + r.status; try { m = (await r.json()).error.message; } catch (e) {} throw new Error('Gemini: ' + m); }
   const d = await r.json(); const t = (d.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('');
   return json ? JSON.parse(t.replace(/```json|```/g, '').trim()) : t.trim();
+}
+// Mic audio → 16 kHz mono PCM16 WAV, so the model hears it (MediaRecorder's
+// webm/opus is not decodable server-side; raw PCM works in every browser).
+function encodeWav(chunks, sampleRate) {
+  let n = 0; for (const c of chunks) n += c.length;
+  const all = new Float32Array(n); let o = 0;
+  for (const c of chunks) { all.set(c, o); o += c.length; }
+  const dst = 16000, ratio = dst / sampleRate, outLen = Math.max(1, Math.floor(n * ratio));
+  const pcm = new Int16Array(outLen);
+  for (let i = 0; i < outLen; i++) {
+    const pos = i / ratio, i0 = Math.floor(pos), f = pos - i0;
+    const a = all[Math.min(i0, n - 1)], b = all[Math.min(i0 + 1, n - 1)];
+    const s = Math.max(-1, Math.min(1, a + (b - a) * f));
+    pcm[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+  }
+  const buf = new ArrayBuffer(44 + pcm.length * 2), v = new DataView(buf);
+  const ws = (off, str) => { for (let i = 0; i < str.length; i++) v.setUint8(off + i, str.charCodeAt(i)); };
+  ws(0, 'RIFF'); v.setUint32(4, 36 + pcm.length * 2, true); ws(8, 'WAVE'); ws(12, 'fmt ');
+  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, dst, true); v.setUint32(28, dst * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+  ws(36, 'data'); v.setUint32(40, pcm.length * 2, true);
+  for (let i = 0; i < pcm.length; i++) v.setInt16(44 + i * 2, pcm[i], true);
+  return new Uint8Array(buf);
+}
+const b64of = u8 => { let s = ''; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s); };
+async function aiTranscribe(wavB64, lang) {
+  const langName = (lang || '').startsWith('ne') ? 'Nepali' : (lang || '').startsWith('hi') ? 'Hindi' : (lang || '').startsWith('es') ? 'Spanish' : '';
+  const prompt = `Transcribe this audio recording exactly as spoken, keeping the original language${langName ? ' — it is ' + langName : ''}. Output only the transcript text and nothing else.`;
+  return (await gemini([{ text: prompt }, { audio: { data: wavB64 } }], false)).trim();
 }
 
 /* =========================================================== VIEWS */
@@ -486,9 +517,9 @@ function vScan() {
 function vSell() {
   const v = U.voice;
   let o = `<div class="card"><div class="ch"><h2><span class="ico t-info">🎙️</span>Voice sales</h2><span class="sub">${esc(set().lang)}${v.listening ? ' · live' : ''}</span></div><div class="voice">
-    <button class="micbtn ${v.listening ? 'on' : ''}" data-a="listen">${v.listening ? I.stop : I.mic}</button>
+    <button class="micbtn ${v.listening || v.recording ? 'on' : ''}" data-a="listen">${v.listening || v.recording ? I.stop : I.mic}</button>
     <div class="wave ${v.listening ? 'on' : ''}">${'<i></i>'.repeat(13)}</div>
-    <div class="trans ${v.transcript ? '' : 'ph2'}" id="trans">${v.transcript ? '“' + esc(v.transcript) + '”' : v.listening ? 'Listening… everything you say lands on the bill' : 'Tap the mic and just talk — “2 kg sugar, 3 bread and a dozen eggs”'}</div>
+    <div class="trans ${v.transcript ? '' : 'ph2'}" id="trans">${v.transcript ? '“' + esc(v.transcript) + '”' : v.recording ? 'Recording… tap again to send' : v.busy ? 'Transcribing…' : v.listening ? 'Listening… everything you say lands on the bill' : 'Tap the mic, speak, tap again — English, हिन्दी, नेपाली, Español'}</div>
     ${v.busy ? '<div class="muted"><div class="spin dk" style="width:22px;height:22px;border-width:3px"></div>Understanding…</div>' : ''}</div>
     <div class="inrow mt"><input class="f" id="typed" placeholder="…or type: sold 2 milk and 1 bread"><button class="btn pri" data-a="typed">Add</button></div>
     </div></div>`;
@@ -726,7 +757,53 @@ function commit(mode) {
 }
 
 /* =========================================================== VOICE */
-function listen() {
+async function listen() {
+  if (U.voice.recording) return stopRec();
+  // With an AI backend the audio goes straight to the model (browser speech
+  // recognition has no Nepali); browser SR stays the offline fallback.
+  if (aiReady() && navigator.mediaDevices?.getUserMedia) return startRec();
+  listenBrowser();
+}
+async function startRec() {
+  if (!S.products.length) toast('Tip: add products first (Scan or Load demo)', 'warn');
+  let stream;
+  try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+  catch (e) {
+    toast('Mic unavailable: ' + e.message + ' — falling back to browser recognition', 'warn', 5000);
+    return listenBrowser();
+  }
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  const src = ctx.createMediaStreamSource(stream);
+  const proc = ctx.createScriptProcessor(4096, 1, 1);
+  const chunks = [];
+  proc.onaudioprocess = e => { if (U.voice.recording) chunks.push(new Float32Array(e.inputBuffer.getChannelData(0))); };
+  src.connect(proc); proc.connect(ctx.destination);
+  U.voice.rec = { stream, ctx, src, proc, chunks };
+  U.voice.recording = true; U.voice.transcript = ''; render();
+  U.voice.recCap = setTimeout(() => { if (U.voice.recording) stopRec(); }, 30000);
+}
+async function stopRec() {
+  const r = U.voice.rec; if (!r) return;
+  clearTimeout(U.voice.recCap);
+  U.voice.recording = false; U.voice.busy = true; render();
+  try { r.proc.disconnect(); r.src.disconnect(); } catch (e) {}
+  r.stream.getTracks().forEach(t => t.stop());
+  const wav = encodeWav(r.chunks, r.ctx.sampleRate);
+  try { r.ctx.close(); } catch (e) {}
+  U.voice.rec = null;
+  if (wav.length < 6000) { U.voice.busy = false; render(); return toast('No speech caught — tap the mic and speak', 'warn'); }
+  try {
+    const text = await aiTranscribe(b64of(wav), set().lang);
+    U.voice.busy = false;
+    if (!text) { render(); return toast('Nothing heard — try again a little closer to the mic', 'warn', 5000); }
+    const el = $('#trans'); if (el) { el.textContent = '“' + text + '”'; el.classList.remove('ph2'); }
+    command(text, 'voice');
+  } catch (e) {
+    U.voice.busy = false; render();
+    toast('Transcription failed: ' + e.message + ' — you can type the command', 'err', 6000);
+  }
+}
+function listenBrowser() {
   if (U.voice.listening) { U.voice.live = false; try { rec.stop(); } catch (e) {} return; }
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) return toast('Voice not supported in this browser — type the command (Chrome / Safari work best)', 'warn', 5000);
