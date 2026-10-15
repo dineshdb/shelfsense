@@ -168,53 +168,68 @@ textarea:focus-visible {
 }
 
 /* ---------- header: the one Qreta bar ---------- */
-.hdr {
-  position: sticky;
-  top: 0;
-  z-index: 20;
-  padding: calc(10px + env(safe-area-inset-top)) 16px 10px;
-  background: color-mix(in oklab, var(--background) 88%, transparent);
-  backdrop-filter: saturate(1.4) blur(10px);
-  -webkit-backdrop-filter: saturate(1.4) blur(10px);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  border-bottom: 1px solid var(--border);
+/* One bar carries brand + navigation: bottom on phones/tablets, top on
+   desktop — the buttons are the loudest element on either end. */
+.appbar {
+  position: fixed;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: 480px;
+  z-index: 30;
+  background: color-mix(in oklab, var(--background) 92%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-top: 1px solid var(--border);
+  padding: 0 10px calc(8px + env(safe-area-inset-bottom));
 }
 .brand {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   min-width: 0;
+  padding: 8px 4px 7px;
 }
 .logo {
-  width: 34px;
-  height: 34px;
-  border-radius: 9px;
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
   background: var(--primary);
   display: grid;
   place-items: center;
   color: var(--primary-foreground);
-  flex: 0 0 34px;
+  flex: 0 0 24px;
 }
 .logo svg {
-  width: 19px;
-  height: 19px;
+  width: 14px;
+  height: 14px;
 }
-.brand h1 {
-  margin: 0;
-  font-size: 15px;
+.brand .bt {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+.brand b {
+  font-size: 12.5px;
   font-weight: 600;
   letter-spacing: -0.01em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.brand p {
-  margin: 0;
-  font-size: 11.5px;
+.brand .tag {
+  font-size: 10.5px;
   color: var(--muted-foreground);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: none;
+}
+.brand #cloudPill {
+  display: none;
 }
 .pill {
   display: inline-flex;
@@ -243,7 +258,7 @@ textarea:focus-visible {
 }
 
 main {
-  padding: 14px 14px 0;
+  padding: 14px 14px 108px;
 }
 .view {
   animation: fade 0.2s ease-out;
@@ -1094,20 +1109,9 @@ select.f {
 
 /* ---------- nav ---------- */
 .nav {
-  position: fixed;
-  bottom: 0;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 100%;
-  max-width: 480px;
-  z-index: 30;
-  background: color-mix(in oklab, var(--background) 92%, transparent);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border-top: 1px solid var(--border);
-  padding: 7px 10px calc(8px + env(safe-area-inset-bottom));
   display: grid;
   grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
   align-items: end;
 }
 .nav button {
@@ -1118,21 +1122,29 @@ select.f {
   align-items: center;
   gap: 3px;
   font-size: 10.5px;
-  font-weight: 500;
+  font-weight: 600;
   color: var(--muted-foreground);
-  padding: 4px 0;
+  padding: 7px 0 6px;
   cursor: pointer;
-  border-radius: calc(var(--radius) * 0.8);
+  border-radius: calc(var(--radius) * 1.1);
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+.nav button:hover {
+  background: color-mix(in oklab, var(--foreground) 5%, transparent);
 }
 .nav button svg {
   width: 22px;
   height: 22px;
 }
 .nav button.on {
-  color: var(--foreground);
+  background: var(--primary);
+  color: var(--primary-foreground);
+  box-shadow: 0 4px 14px color-mix(in oklab, var(--primary) 35%, transparent);
 }
 .nav button.on svg {
-  color: var(--primary);
+  color: var(--primary-foreground);
 }
 .nav .fabm {
   width: 54px;
@@ -1157,7 +1169,7 @@ select.f {
 }
 .fab {
   position: fixed;
-  bottom: calc(92px + env(safe-area-inset-bottom));
+  bottom: calc(112px + env(safe-area-inset-bottom));
   right: max(16px, calc(50% - 224px));
   z-index: 25;
 }
@@ -1380,9 +1392,9 @@ select.f {
     max-width: 720px;
   }
   main {
-    padding: 18px 18px 0;
+    padding: 18px 18px 108px;
   }
-  .nav {
+  .appbar {
     max-width: 720px;
   }
   .fab {
@@ -1415,46 +1427,71 @@ select.f {
 @media (min-width: 1100px) {
   .shell {
     max-width: 1100px;
+    padding-top: 76px;
     padding-bottom: 32px;
   }
-  main {
-    margin-left: 92px;
-    padding: 24px 28px 0;
-  }
-  /* first-run setup renders without the rail (nav hidden by JS) — stretch
-     its centered stage back across the full shell (92 rail + 28/28 main
-     padding) so the welcome card centers on the same axis as the header */
-  main > div[style*="min-height"] {
-    margin-left: -120px;
-    width: calc(100% + 148px);
-  }
-
-  /* the bottom tab bar becomes a slim left rail: same element, fixed just
-     under the sticky header, hugging the container's left edge */
-  .nav {
-    top: 62px;
-    bottom: 0;
-    left: calc(50% - 550px);
-    right: auto;
-    transform: none;
-    width: 92px;
-    max-width: none;
+  /* the bar moves to the top: brand on the left, prominent tab pills on the
+     right — one element, no separate header */
+  .appbar {
+    top: 0;
+    bottom: auto;
+    left: 50%;
+    transform: translateX(-50%);
+    max-width: 1100px;
     border-top: 0;
-    border-right: 1px solid var(--border);
-    padding: 14px 8px;
-    grid-template-columns: 1fr;
-    gap: 4px;
-    align-items: stretch;
+    border-bottom: 1px solid var(--border);
+    border-radius: 0 0 calc(var(--radius) * 1.6) calc(var(--radius) * 1.6);
+    padding: 10px 18px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+  }
+  .brand {
+    padding: 0;
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 46%;
+  }
+  .brand b {
+    flex: 0 0 auto;
+    font-size: 15.5px;
+  }
+  .brand .tag {
+    flex: 0 1 auto;
+    display: inline;
+  }
+  .brand #cloudPill {
+    display: inline-flex;
+  }
+  .nav {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    flex: 0 0 auto;
   }
   .nav button {
-    padding: 9px 2px;
+    flex-direction: row;
+    gap: 7px;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 9px 16px;
+    border-radius: 999px;
+  }
+  .nav button svg {
+    width: 17px;
+    height: 17px;
   }
   .nav .fabm {
-    margin: 0 auto;
+    width: 38px;
+    height: 38px;
+    margin: 0;
+    border-radius: 999px;
+    border-width: 0;
   }
-  .fab {
-    bottom: 32px;
-    right: max(28px, calc(50% - 550px + 28px));
+  main {
+    margin-left: 0;
+    padding: 22px 28px 40px;
   }
 
   .hero .big {

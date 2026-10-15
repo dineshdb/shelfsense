@@ -46,19 +46,22 @@ import "../styles/global.css";
   <body>
 
 <div class="shell">
-  <header class="hdr">
-    <div class="brand"><div class="logo" id="logo"></div><div><h1 id="storeName">My Grocery Store</h1><p>ShelfSense AI · your AI store employee</p></div></div>
-    <span class="pill off" id="enginePill"><i></i>On-device</span>
-    <span class="pill off" id="cloudPill" style="display:none"><i></i>Local</span>
-  </header>
+  <div class="appbar">
+    <div class="brand">
+      <div class="logo" id="logo"></div>
+      <div class="bt"><b id="storeName">My Grocery Store</b><span class="tag">ShelfSense AI · your AI store employee</span></div>
+      <span class="pill off" id="enginePill"><i></i>On-device</span>
+      <span class="pill off" id="cloudPill" style="display:none"><i></i>Local</span>
+    </div>
+    <nav class="nav">
+      <button data-a="tab" data-v="home"><span>Insights</span></button>
+      <button data-a="tab" data-v="scan"><span>Scan</span></button>
+      <button data-a="tab" data-v="sell"><span>Sell</span></button>
+      <button data-a="tab" data-v="stock"><span>Stock</span></button>
+      <button data-a="tab" data-v="settings"><span>Settings</span></button>
+    </nav>
+  </div>
   <main id="view"></main>
-  <nav class="nav">
-    <button data-a="tab" data-v="home">Insights</button>
-    <button data-a="tab" data-v="scan">Scan</button>
-    <button data-a="tab" data-v="sell">Sell</button>
-    <button data-a="tab" data-v="stock">Stock</button>
-    <button data-a="tab" data-v="settings">Settings</button>
-  </nav>
 </div>
 <div id="sheet"></div>
 <div class="toasts" id="toasts"></div>
@@ -425,6 +428,11 @@ function vSetup() {
         <label class="lb" style="margin-top:10px">Model name</label>
         <input class="f" id="su_model" value="${esc(set().aiModel)}">
         <div class="muted small mt">Point at your merve gateway: <code>http://localhost:8283</code> with model <code>gemma-4-e4b</code> — or any OpenAI-compatible server. Fully offline AI. Blocked by the browser? Open <code>http://localhost:8283</code> directly — that port serves this app <i>and</i> the AI on one origin.</div>`}
+      <div class="g2 mt" style="border-top:1px solid var(--line);padding-top:12px">
+        <div><label class="lb">Shop name</label><input class="f" id="su_name" value="${esc(set().storeName)}" placeholder="My Grocery Store"></div>
+        <div><label class="lb">Currency</label><input class="f" id="su_cur" value="${esc(set().currency)}" placeholder="$"></div>
+      </div>
+      <div class="muted small" style="margin-top:-4px">Both are yours to change anytime in Settings.</div>
       <div class="g2 mt2"><button class="btn pri" data-a="setupTest" ${st.busy ? 'disabled' : ''}>${st.busy ? 'Testing…' : 'Test & continue'}</button>
         <button class="btn ghost" data-a="setupSkip">Skip — on-device only</button></div>
       ${st.msg ? `<div class="muted small mt" style="color:var(--bad)">${esc(st.msg)}</div>` : ''}
@@ -658,14 +666,15 @@ function vSheet() {
 
 /* =========================================================== RENDER */
 function render() {
+  const barEl = document.querySelector('.appbar');
   const navEl = document.querySelector('.nav');
   if (!set().setupDone) {
-    if (navEl) navEl.style.display = 'none';
+    if (barEl) barEl.style.display = 'none';
     $('#view').innerHTML = vSetup();
     $('#sheet').innerHTML = '';
     return;
   }
-  if (navEl) navEl.style.display = '';
+  if (barEl) barEl.style.display = '';
   $('#storeName').textContent = set().storeName;
   const pill = $('#enginePill'); pill.className = 'pill ' + (aiReady() ? '' : 'off'); pill.innerHTML = `<i></i>${aiReady() ? aiLabel() : 'On-device'}`;
   const V = { home: vHome, scan: vScan, sell: vSell, stock: vStock, settings: vSettings }[U.tab];
@@ -985,9 +994,15 @@ const ACT = {
     document.querySelector('meta[name="theme-color"]')?.setAttribute("content", dark ? "#010507" : "#ffffff");
     render();
   },
-  setupSkip: () => { set().setupDone = true; save(); render(); toast('On-device mode — configure an AI backend anytime in Settings', 'warn', 5000); },
+  setupSkip: () => {
+    const nm = ($('#su_name')?.value || '').trim(); if (nm) set().storeName = nm;
+    const cur = ($('#su_cur')?.value || '').trim(); if (cur) set().currency = cur;
+    set().setupDone = true; save(); render(); toast('On-device mode — configure an AI backend anytime in Settings', 'warn', 5000);
+  },
   setupTest: async () => {
     const st = U.setup;
+    const nm = ($('#su_name')?.value || '').trim(); if (nm) set().storeName = nm;
+    const cur = ($('#su_cur')?.value || '').trim(); if (cur) set().currency = cur;
     if (st.mode === 'gemini') set().apiKey = ($('#su_key')?.value || '').trim();
     else { set().aiBaseUrl = ($('#su_url')?.value || '').trim(); set().aiModel = ($('#su_model')?.value || '').trim() || 'gemma-4-e4b'; }
     set().aiMode = st.mode;
