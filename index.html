@@ -1,0 +1,1037 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<meta name="theme-color" content="#eef2f7"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
+<title>ShelfSense AI · Smart Retail Assistant</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛒</text></svg>">
+<style>:root{
+  --bg:#eef2f7;--card:#ffffff;--ink:#0b1220;--ink2:#334155;--mute:#64748b;--line:#e6ebf2;
+  --brand:#10b981;--brand2:#06b6d4;--brand3:#6366f1;--deep:#0b1220;
+  --ok:#10b981;--warn:#f59e0b;--bad:#ef4444;--slow:#8b5cf6;
+  --r:20px;--sh:0 1px 2px rgba(15,23,42,.04),0 8px 24px rgba(15,23,42,.06);
+  --grad:linear-gradient(135deg,#10b981 0%,#06b6d4 55%,#6366f1 100%);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%}
+body{font-family:"Inter","SF Pro Display",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:var(--ink);font-size:15px;
+  background:radial-gradient(1200px 600px at 10% -10%,#d1fae5 0,transparent 60%),radial-gradient(900px 600px at 110% 10%,#e0e7ff 0,transparent 55%),var(--bg);
+  -webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit;color:inherit}
+.shell{max-width:480px;margin:0 auto;min-height:100vh;position:relative;background:var(--bg);padding-bottom:calc(96px + env(safe-area-inset-bottom))}
+@media(min-width:620px){
+  body{padding:28px 0}
+  .shell{min-height:calc(100vh - 56px);border-radius:34px;box-shadow:0 30px 80px rgba(15,23,42,.18),0 0 0 10px #0b1220;overflow:hidden}
+  .nav{border-radius:0 0 34px 34px}
+}
+/* ---------- header ---------- */
+.hdr{position:sticky;top:0;z-index:20;padding:calc(14px + env(safe-area-inset-top)) 18px 14px;
+  background:rgba(238,242,247,.82);backdrop-filter:saturate(1.6) blur(14px);-webkit-backdrop-filter:saturate(1.6) blur(14px);
+  display:flex;align-items:center;justify-content:space-between;gap:10px;border-bottom:1px solid rgba(226,232,240,.7)}
+.brand{display:flex;align-items:center;gap:11px;min-width:0}
+.logo{width:42px;height:42px;border-radius:14px;background:var(--grad);display:grid;place-items:center;color:#fff;box-shadow:0 6px 18px rgba(16,185,129,.35);flex:0 0 42px}
+.logo svg{width:22px;height:22px}
+.brand h1{margin:0;font-size:16.5px;font-weight:800;letter-spacing:-.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.brand p{margin:1px 0 0;font-size:12px;color:var(--mute);font-weight:500}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:99px;font-size:11.5px;font-weight:700;background:#fff;border:1px solid var(--line);white-space:nowrap;box-shadow:var(--sh)}
+.pill i{width:7px;height:7px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 3px rgba(16,185,129,.18)}
+.pill.off i{background:var(--warn);box-shadow:0 0 0 3px rgba(245,158,11,.18)}
+main{padding:14px 14px 0}
+.view{animation:fade .25s ease-out}
+@keyframes fade{from{opacity:0;transform:translateY(6px)}}
+/* ---------- hero ---------- */
+.hero{position:relative;overflow:hidden;border-radius:26px;padding:20px;color:#fff;margin-bottom:14px;
+  background:radial-gradient(400px 200px at 100% 0,rgba(99,102,241,.55),transparent 60%),radial-gradient(300px 220px at 0 100%,rgba(16,185,129,.55),transparent 60%),#0b1220;
+  box-shadow:0 18px 40px rgba(11,18,32,.28)}
+.hero .g{font-size:13px;opacity:.75;font-weight:600}
+.hero .big{font-size:36px;font-weight:800;letter-spacing:-1px;margin:4px 0 2px}
+.hero .sm{font-size:12.5px;opacity:.75}
+.hero .row{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.ring{--p:0;width:86px;height:86px;border-radius:50%;flex:0 0 86px;display:grid;place-items:center;
+  background:conic-gradient(#34d399 calc(var(--p)*1%),rgba(255,255,255,.12) 0)}
+.ring>div{width:68px;height:68px;border-radius:50%;background:#0f172a;display:grid;place-items:center;text-align:center}
+.ring b{font-size:19px;display:block;line-height:1}
+.ring small{font-size:9.5px;opacity:.7;text-transform:uppercase;letter-spacing:.6px}
+.hstats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:16px}
+.hstats div{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:10px}
+.hstats b{display:block;font-size:16px}
+.hstats span{font-size:11px;opacity:.7}
+/* ---------- quick actions ---------- */
+.qa{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}
+.qa button{border:1px solid var(--line);background:#fff;border-radius:18px;padding:14px 8px;display:flex;flex-direction:column;align-items:center;gap:8px;font-weight:700;font-size:12.5px;cursor:pointer;box-shadow:var(--sh);transition:.15s}
+.qa button:active{transform:scale(.96)}
+.qa .ic{width:40px;height:40px;border-radius:13px;display:grid;place-items:center;color:#fff}
+.qa .ic svg{width:21px;height:21px}
+/* ---------- cards ---------- */
+.card{background:var(--card);border-radius:var(--r);box-shadow:var(--sh);padding:16px;margin-bottom:14px;border:1px solid rgba(226,232,240,.8)}
+.ch{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}
+.ch h2{margin:0;font-size:15.5px;font-weight:800;letter-spacing:-.2px;display:flex;align-items:center;gap:8px}
+.ch .sub{font-size:12px;color:var(--mute);font-weight:600}
+.ico{width:30px;height:30px;border-radius:10px;display:grid;place-items:center;font-size:15px;flex:0 0 30px}
+.t-ok{background:#d1fae5}.t-warn{background:#fef3c7}.t-bad{background:#fee2e2}.t-slow{background:#ede9fe}.t-info{background:#e0f2fe}.t-ind{background:#e0e7ff}
+.muted{color:var(--mute);font-size:13px}
+.small{font-size:12px}
+.empty{text-align:center;color:var(--mute);padding:22px 10px;font-size:14px}
+.empty .e{font-size:34px;display:block;margin-bottom:6px}
+/* ---------- rows ---------- */
+.list{display:flex;flex-direction:column;gap:8px}
+.it{display:flex;align-items:center;gap:12px;padding:10px;border-radius:16px;background:#f8fafc;border:1px solid #eef2f6}
+.em{width:44px;height:44px;border-radius:14px;background:#fff;border:1px solid var(--line);display:grid;place-items:center;font-size:22px;flex:0 0 44px}
+.mid{flex:1;min-width:0}
+.tt{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:14.5px}
+.ss{font-size:12px;color:var(--mute);margin-top:2px}
+.rt{text-align:right;flex:0 0 auto}
+.bar{height:6px;background:#e7edf3;border-radius:9px;overflow:hidden;margin-top:7px}
+.bar i{display:block;height:100%;border-radius:9px}
+.badge{display:inline-block;padding:3px 9px;border-radius:99px;font-size:10.5px;font-weight:800;letter-spacing:.3px;text-transform:uppercase}
+.b-ok{background:#d1fae5;color:#047857}.b-low{background:#fef3c7;color:#b45309}.b-out{background:#fee2e2;color:#b91c1c}.b-slow{background:#ede9fe;color:#6d28d9}.b-new{background:#e0f2fe;color:#0369a1}
+.order{display:flex;align-items:center;gap:10px;padding:11px 0;border-bottom:1px dashed var(--line)}
+.order:last-child{border-bottom:0}
+.order .q{font-weight:800;font-size:15px;text-align:right}
+.total{display:flex;justify-content:space-between;align-items:center;margin-top:12px;padding:12px 14px;border-radius:14px;background:linear-gradient(135deg,#ecfdf5,#eef2ff);font-weight:700}
+.total b{font-size:18px}
+/* ---------- buttons ---------- */
+.btn{border:0;border-radius:14px;padding:12px 14px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px;background:var(--ink);color:#fff;transition:.15s;font-size:14px}
+.btn:active{transform:scale(.97)}
+.btn.pri{background:var(--grad);box-shadow:0 8px 20px rgba(6,182,212,.3)}
+.btn.sec{background:#f1f5f9;color:var(--ink)}
+.btn.ghost{background:#fff;border:1px solid var(--line);color:var(--ink2)}
+.btn.danger{background:#fef2f2;color:var(--bad)}
+.btn.sm{padding:8px 12px;font-size:12.5px;border-radius:11px}
+.btn.w{width:100%}
+.btn[disabled]{opacity:.45;pointer-events:none}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.mt{margin-top:10px}.mt2{margin-top:16px}
+.flex{display:flex;align-items:center;gap:8px}.between{justify-content:space-between}
+/* ---------- forms ---------- */
+.f{width:100%;padding:12px 13px;border-radius:13px;border:1px solid var(--line);background:#fff;outline:none;transition:.15s}
+.f:focus{border-color:var(--brand2);box-shadow:0 0 0 4px rgba(6,182,212,.14)}
+.lb{display:block;font-size:11.5px;font-weight:800;color:var(--mute);margin:12px 0 6px;text-transform:uppercase;letter-spacing:.5px}
+.search{position:relative}
+.search svg{position:absolute;left:13px;top:50%;transform:translateY(-50%);width:18px;height:18px;color:var(--mute)}
+.search .f{padding-left:40px}
+.chips{display:flex;gap:7px;overflow-x:auto;padding:12px 0 4px;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chip{border:1px solid var(--line);background:#fff;border-radius:99px;padding:7px 13px;font-size:12.5px;font-weight:700;white-space:nowrap;cursor:pointer;color:var(--ink2)}
+.chip.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.sw{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}
+.sw:last-child{border-bottom:0}
+.tg{width:48px;height:29px;border-radius:99px;background:#cbd5e1;position:relative;cursor:pointer;flex:0 0 48px;transition:.2s;border:0}
+.tg::after{content:"";position:absolute;top:3px;left:3px;width:23px;height:23px;border-radius:50%;background:#fff;transition:.2s;box-shadow:0 2px 4px rgba(0,0,0,.2)}
+.tg.on{background:var(--brand)}.tg.on::after{left:22px}
+.qb{width:34px;height:34px;border-radius:11px;border:1px solid var(--line);background:#fff;font-weight:800;font-size:18px;cursor:pointer;color:var(--ink);display:grid;place-items:center}
+.qb:active{transform:scale(.92)}
+/* ---------- scan ---------- */
+.viewer{position:relative;border-radius:20px;overflow:hidden;background:#0b1220;min-height:250px;display:grid;place-items:center}
+.viewer video,.viewer img{width:100%;display:block}
+.viewer canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.ph{color:#94a3b8;text-align:center;padding:34px 24px;font-size:13.5px;line-height:1.5}
+.ph .scanico{width:76px;height:76px;margin:0 auto 12px;border-radius:22px;background:rgba(255,255,255,.06);display:grid;place-items:center;border:1px solid rgba(255,255,255,.1)}
+.ph .scanico svg{width:36px;height:36px;color:#34d399}
+.corner{position:absolute;width:26px;height:26px;border:3px solid #34d399;opacity:.9}
+.c1{top:14px;left:14px;border-right:0;border-bottom:0;border-radius:8px 0 0 0}.c2{top:14px;right:14px;border-left:0;border-bottom:0;border-radius:0 8px 0 0}
+.c3{bottom:14px;left:14px;border-right:0;border-top:0;border-radius:0 0 0 8px}.c4{bottom:14px;right:14px;border-left:0;border-top:0;border-radius:0 0 8px 0}
+.laser{position:absolute;left:8%;right:8%;height:2px;background:linear-gradient(90deg,transparent,#34d399,transparent);box-shadow:0 0 12px #34d399;animation:las 2.2s ease-in-out infinite}
+@keyframes las{0%,100%{top:12%}50%{top:86%}}
+.busy{position:absolute;inset:0;background:rgba(11,18,32,.72);backdrop-filter:blur(3px);display:grid;place-items:center;color:#fff;font-weight:700;text-align:center;padding:20px;font-size:14px}
+.spin{width:36px;height:36px;border:4px solid rgba(255,255,255,.2);border-top-color:#34d399;border-radius:50%;animation:sp .9s linear infinite;margin:0 auto 12px}
+.spin.dk{border-color:#e2e8f0;border-top-color:var(--brand)}
+@keyframes sp{to{transform:rotate(360deg)}}
+.det{display:grid;grid-template-columns:26px 1fr;gap:10px;padding:12px;border:1px solid #eef2f6;border-radius:16px;background:#f8fafc}
+.det input[type=checkbox]{width:20px;height:20px;accent-color:var(--brand);margin-top:12px}
+.det .rowf{display:grid;grid-template-columns:1fr 1fr 1.1fr;gap:6px;margin-top:8px}
+.det .f{padding:9px 10px;font-size:14px}
+/* ---------- voice ---------- */
+.voice{text-align:center;padding:8px 0 4px}
+.micbtn{width:136px;height:136px;border-radius:50%;border:0;cursor:pointer;position:relative;color:#fff;margin:10px auto 0;display:grid;place-items:center;
+  background:var(--grad);box-shadow:0 18px 40px rgba(6,182,212,.4),inset 0 -6px 18px rgba(0,0,0,.15)}
+.micbtn svg{width:50px;height:50px}
+.micbtn.on{background:linear-gradient(135deg,#ef4444,#f97316);box-shadow:0 18px 40px rgba(239,68,68,.4)}
+.micbtn.on::before,.micbtn.on::after{content:"";position:absolute;inset:-12px;border-radius:50%;border:3px solid rgba(239,68,68,.5);animation:pulse 1.5s ease-out infinite}
+.micbtn.on::after{animation-delay:.75s}
+@keyframes pulse{from{transform:scale(.88);opacity:1}to{transform:scale(1.38);opacity:0}}
+.wave{display:flex;gap:4px;justify-content:center;align-items:center;height:30px;margin-top:16px}
+.wave i{width:4px;border-radius:4px;background:#cbd5e1;height:6px}
+.wave.on i{background:var(--bad);animation:wv 1s ease-in-out infinite}
+.wave.on i:nth-child(2n){animation-delay:.15s}.wave.on i:nth-child(3n){animation-delay:.3s}.wave.on i:nth-child(5n){animation-delay:.45s}
+@keyframes wv{0%,100%{height:6px}50%{height:28px}}
+.trans{min-height:52px;margin-top:8px;font-size:19px;font-weight:700;letter-spacing:-.3px;padding:0 10px;color:var(--ink)}
+.trans.ph2{color:var(--mute);font-weight:600;font-size:14.5px}
+.inrow{display:flex;gap:8px}.inrow .f{flex:1}
+.ex{display:flex;flex-wrap:wrap;gap:7px;justify-content:center;margin-top:12px}
+.ex button{border:1px dashed #a5b4fc;background:#eef2ff;color:#4338ca;border-radius:99px;padding:7px 11px;font-size:12px;font-weight:700;cursor:pointer}
+.pi{display:grid;grid-template-columns:72px 80px 1fr;gap:6px;margin-bottom:8px}
+.pi .f{padding:10px;font-size:14px}
+/* ---------- chart ---------- */
+.chart svg{width:100%;height:auto;display:block}
+.chart text{font-size:9px;fill:#94a3b8;font-family:inherit}
+/* ---------- nav ---------- */
+.nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:480px;z-index:30;
+  background:rgba(255,255,255,.92);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-top:1px solid var(--line);
+  padding:8px 10px calc(10px + env(safe-area-inset-bottom));display:grid;grid-template-columns:repeat(5,1fr);align-items:end}
+@media(min-width:620px){.nav{bottom:28px}}
+.nav button{background:none;border:0;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:10.5px;font-weight:700;color:#94a3b8;padding:4px 0;cursor:pointer}
+.nav button svg{width:23px;height:23px}
+.nav button.on{color:var(--ink)}
+.nav button.on svg{color:var(--brand)}
+.nav .fabm{width:60px;height:60px;margin:-30px auto 0;border-radius:20px;background:var(--grad);color:#fff;display:grid;place-items:center;box-shadow:0 10px 24px rgba(6,182,212,.45);border:4px solid #fff;transform:rotate(0)}
+.nav .fabm svg{width:26px;height:26px;color:#fff!important}
+.fab{position:fixed;bottom:calc(100px + env(safe-area-inset-bottom));right:max(16px,calc(50% - 224px));z-index:25}
+@media(min-width:620px){.fab{bottom:136px}}
+.fab .btn{width:56px;height:56px;border-radius:18px;font-size:28px;padding:0}
+/* ---------- sheet / toasts ---------- */
+.sheetbg{position:fixed;inset:0;background:rgba(11,18,32,.55);backdrop-filter:blur(2px);z-index:50;display:flex;align-items:flex-end;justify-content:center;animation:fade .2s}
+.sheet{background:#fff;width:100%;max-width:480px;border-radius:26px 26px 0 0;padding:10px 18px calc(18px + env(safe-area-inset-bottom));max-height:90vh;overflow:auto;animation:up .25s cubic-bezier(.2,.8,.2,1)}
+.sheet .grab{width:42px;height:5px;border-radius:9px;background:#e2e8f0;margin:0 auto 12px}
+.sheet h3{margin:0 0 4px;font-size:18px}
+@keyframes up{from{transform:translateY(60px);opacity:0}}
+.toasts{position:fixed;top:calc(12px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);width:calc(100% - 24px);max-width:456px;z-index:60;display:flex;flex-direction:column;gap:8px;pointer-events:none}
+.toast{background:#0b1220;color:#fff;padding:12px 14px;border-radius:15px;font-weight:600;font-size:13.5px;box-shadow:0 14px 34px rgba(0,0,0,.25);animation:tin .25s cubic-bezier(.2,.8,.2,1);display:flex;gap:10px;align-items:flex-start}
+.toast.ok{background:#065f46}.toast.warn{background:#92400e}.toast.err{background:#991b1b}
+@keyframes tin{from{transform:translateY(-14px);opacity:0}}
+.ai{white-space:pre-wrap;line-height:1.55;font-size:14px;color:var(--ink2);background:linear-gradient(135deg,#f0fdfa,#eef2ff);border-radius:14px;padding:14px}
+.onb{display:flex;flex-direction:column;gap:10px;margin:12px 0}
+.onb div{display:flex;gap:12px;align-items:center;font-size:13.5px;font-weight:600;color:var(--ink2)}
+.onb span{width:30px;height:30px;border-radius:10px;background:#f1f5f9;display:grid;place-items:center;font-weight:800;flex:0 0 30px}
+</style>
+<style>.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px}
+.stats div{background:#f8fafc;border:1px solid #eef2f6;border-radius:14px;padding:8px 6px;text-align:center}
+.stats b{display:block;font-size:15px}.stats span{font-size:10.5px;color:var(--mute);font-weight:600}
+.h3{margin:16px 0 8px;font-size:14px;font-weight:800}</style><script>
+  /* Firebase web app config — paste from the Firebase console (Project
+     settings → Your apps → Web app). Empty = local-only mode (the app
+     works fully offline on localStorage). */
+  window.FIREBASE_CONFIG = {};
+</script>
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-app.js";
+  import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-auth.js";
+  import { getFirestore, doc, getDoc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-firestore.js";
+  window.__firebase = { initializeApp, getAuth, signInAnonymously, onAuthStateChanged, getFirestore, doc, getDoc, setDoc, onSnapshot };
+</script>
+</head><body>
+<div class="shell">
+  <header class="hdr">
+    <div class="brand"><div class="logo" id="logo"></div><div><h1 id="storeName">My Grocery Store</h1><p>ShelfSense AI · your AI store employee</p></div></div>
+    <span class="pill off" id="enginePill"><i></i>On-device</span>
+    <span class="pill off" id="cloudPill" style="display:none"><i></i>Local</span>
+  </header>
+  <main id="view"></main>
+  <nav class="nav">
+    <button data-a="tab" data-v="home">Insights</button>
+    <button data-a="tab" data-v="scan">Scan</button>
+    <button data-a="tab" data-v="sell">Sell</button>
+    <button data-a="tab" data-v="stock">Stock</button>
+    <button data-a="tab" data-v="settings">Settings</button>
+  </nav>
+</div>
+<div id="sheet"></div>
+<div class="toasts" id="toasts"></div>
+<input type="file" id="photoIn" accept="image/*" capture="environment" multiple hidden>
+<input type="file" id="videoIn" accept="video/*" hidden>
+<input type="file" id="importIn" accept="application/json" hidden>
+
+<script>/* ===== ShelfSense Core: voice parsing, product matching, analytics (pure functions) ===== */
+const Core = (() => {
+  const DAY = 864e5;
+  const strip = s => (s || '').toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const NUM = { a: 1, an: 1, one: 1, un: 1, uno: 1, una: 1, two: 2, dos: 2, three: 3, tres: 3, four: 4, cuatro: 4,
+    five: 5, cinco: 5, six: 6, seis: 6, seven: 7, siete: 7, eight: 8, ocho: 8, nine: 9, nueve: 9, ten: 10, diez: 10,
+    eleven: 11, once: 11, twelve: 12, doce: 12, fifteen: 15, quince: 15, twenty: 20, veinte: 20, thirty: 30, treinta: 30,
+    fifty: 50, cincuenta: 50, hundred: 100, cien: 100, half: 0.5, medio: 0.5, media: 0.5, quarter: 0.25, cuarto: 0.25,
+    couple: 2, par: 2 };
+  const UNIT_RULES = [
+    [/^(kilograms?|kilos?|kgs?|kilogramos?)$/, 'kg'],
+    [/^(grams?|grammes?|g|gr|grs|gramos?)$/, 'g'],
+    [/^(liters?|litres?|l|lts?|litros?)$/, 'L'],
+    [/^(milliliters?|millilitres?|ml|mililitros?)$/, 'ml'],
+    [/^(packs?|packets?|packages?|paquetes?|bags?|bolsas?|boxes?|cajas?)$/, 'pack'],
+    [/^(units?|pieces?|pcs|unidades?|bottles?|botellas?|cans?|latas?|loaves|loaf|bars?|barras?)$/, 'unit'],
+    [/^(dozens?|docenas?)$/, 'dozen']
+  ];
+  const SALE = new Set(['sold', 'sell', 'sells', 'selling', 'sale', 'sales', 'vendi', 'vendio', 'vendido', 'vendida',
+    'vendidos', 'vendidas', 'vendimos', 'venta', 'vender', 'vende']);
+  const RESTOCK = new Set(['received', 'receive', 'restock', 'restocked', 'added', 'add', 'arrived', 'delivered',
+    'delivery', 'recibi', 'recibimos', 'llegaron', 'llego', 'compre', 'compramos', 'agregar', 'agrega', 'agregue',
+    'reponer', 'repuse', 'entrada', 'ingreso']);
+  const STOP = new Set(['of', 'de', 'del', 'the', 'el', 'la', 'los', 'las', 'i', 'we', 'yo', 'just', 'have', 'has',
+    'been', 'was', 'were', 'se', 'please', 'por', 'favor', 'for', 'to', 'customer', 'cliente', 'today', 'hoy', 'more',
+    'mas', 'stock', 'inventory', 'inventario', 'some', 'unos', 'unas', 'que', 'and', 'y', 'with', 'con', 'en', 'in',
+    'it', 'is', 'are', 'my', 'mi', 'al', 'lo', 'le', 'les', 'item', 'items', 'product', 'producto', 'plushalf']);
+
+  const unitOf = tok => { for (const [re, u] of UNIT_RULES) if (re.test(tok)) return u; return null; };
+  const isSaleWord = w => SALE.has(w);
+  const isRestockWord = w => RESTOCK.has(w);
+
+  function lev(a, b) {
+    const m = a.length, n = b.length; if (!m) return n; if (!n) return m;
+    let prev = Array.from({ length: n + 1 }, (_, j) => j);
+    for (let i = 1; i <= m; i++) {
+      const cur = [i];
+      for (let j = 1; j <= n; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      prev = cur;
+    }
+    return prev[n];
+  }
+  const sim = (a, b) => {
+    if (a === b) return 1;
+    if (a.length > 3 && b.length > 3 && (a.startsWith(b) || b.startsWith(a))) return 0.9;
+    return 1 - lev(a, b) / Math.max(a.length, b.length);
+  };
+  const toks = s => strip(s).replace(/[^a-z0-9\s]/g, ' ').split(/\s+/)
+    .filter(t => t.length > 1 && !/\d/.test(t) && !STOP.has(t) && !unitOf(t) && !isSaleWord(t) && !isRestockWord(t));
+
+  function matchProduct(query, products) {
+    const q = toks(query);
+    if (!q.length || !products.length) return { product: null, score: 0 };
+    let best = null, bestScore = 0;
+    for (const p of products) {
+      for (const cand of [p.name, ...(p.aliases || [])]) {
+        const c = toks(cand); if (!c.length) continue;
+        const recall = q.reduce((s, t) => s + Math.max(...c.map(x => sim(t, x))), 0) / q.length;
+        const prec = c.reduce((s, t) => s + Math.max(...q.map(x => sim(t, x))), 0) / c.length;
+        const sc = 0.65 * recall + 0.35 * prec;
+        if (sc > bestScore) { bestScore = sc; best = p; }
+      }
+    }
+    return bestScore >= 0.62 ? { product: best, score: bestScore } : { product: null, score: bestScore, suggestion: best };
+  }
+
+  function convertQty(qty, said, pu) {
+    if (!said || said === pu) return qty;
+    if (said === 'dozen') return pu === 'unit' ? qty * 12 : qty;
+    if (said === 'g' && pu === 'kg') return qty / 1000;
+    if (said === 'kg' && pu === 'g') return qty * 1000;
+    if (said === 'ml' && pu === 'L') return qty / 1000;
+    if (said === 'L' && pu === 'ml') return qty * 1000;
+    return qty;
+  }
+
+  function parseCommand(text, products) {
+    let t = ' ' + strip(text) + ' ';
+    t = t.replace(/(\d)\s*\/\s*(\d)/g, (m, a, b) => ' ' + (Number(a) / Number(b)) + ' ');
+    t = t.replace(/(\d),(\d)/g, '$1.$2').replace(/(\d)([a-z])/g, '$1 $2');
+    t = t.replace(/\b(and a half|and half|y medio|y media)\b/g, ' plushalf ');
+    t = t.replace(/[^a-z0-9.,;\s]/g, ' ');
+    const all = t.replace(/[,;]/g, ' ').split(/\s+/).map(w => w.replace(/^\.+|\.+$/g, '')).filter(Boolean);
+    const hasSale = all.some(isSaleWord), hasRestock = all.some(isRestockWord);
+    const intent = hasRestock && !hasSale ? 'restock' : 'sale';
+    const segments = t.split(/\s(?:and|y|plus|also|tambien)\s|[,;]/);
+    const items = [];
+    for (const seg of segments) {
+      const words = seg.split(/\s+/).map(w => w.replace(/^\.+|\.+$/g, '')).filter(Boolean);
+      let qty = null, unit = null, half = false; const name = [];
+      for (const w of words) {
+        if (isSaleWord(w) || isRestockWord(w)) continue;
+        if (w === 'plushalf') { half = true; continue; }
+        if (/^\d+(\.\d+)?$/.test(w)) { if (qty === null) qty = parseFloat(w); continue; }
+        if (NUM[w] !== undefined) { if (qty === null) qty = NUM[w]; continue; }
+        const u = unitOf(w);
+        if (u) { if (!unit) unit = u; continue; }
+        if (STOP.has(w)) continue;
+        name.push(w);
+      }
+      if (!name.length) continue;
+      if (qty === null) qty = 1;
+      if (half) qty += 0.5;
+      const query = name.join(' ');
+      const m = matchProduct(query, products);
+      items.push({ raw: seg.trim(), query, qty, unit, productId: m.product ? m.product.id : null,
+        productName: m.product ? m.product.name : null, score: +m.score.toFixed(2),
+        suggestionId: m.suggestion ? m.suggestion.id : null });
+    }
+    return { text, intent, items };
+  }
+
+  function dailySeries(moves, days, now = Date.now()) {
+    const start = new Date(now); start.setHours(0, 0, 0, 0);
+    const out = [];
+    for (let i = days - 1; i >= 0; i--) {
+      const d0 = start.getTime() - i * DAY, d1 = d0 + DAY;
+      const rev = moves.filter(m => m.type === 'sale' && m.ts >= d0 && m.ts < d1).reduce((s, m) => s + (m.total || 0), 0);
+      out.push({ label: new Date(d0).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }), value: +rev.toFixed(2) });
+    }
+    return out;
+  }
+
+  function analyze(products, moves, s, now = Date.now()) {
+    const sales = moves.filter(m => m.type === 'sale');
+    const first = sales.length ? Math.min(...sales.map(m => m.ts)) : now;
+    const windowDays = Math.max(1, Math.min(s.windowDays || 28, Math.floor((now - first) / DAY) + 1));
+    const lead = +s.leadDays || 0, cover = +s.coverDays || 0, safety = +s.safetyDays || 0;
+    const rows = products.map(p => {
+      const ps = sales.filter(m => m.productId === p.id);
+      const win = ps.filter(m => m.ts >= now - windowDays * DAY);
+      const last7 = ps.filter(m => m.ts >= now - 7 * DAY);
+      const sold = win.reduce((a, m) => a + m.qty, 0);
+      const qty7 = last7.reduce((a, m) => a + m.qty, 0);
+      const rev7 = last7.reduce((a, m) => a + (m.total || 0), 0);
+      const revWin = win.reduce((a, m) => a + (m.total || 0), 0);
+      const avgDaily = sold / windowDays;
+      const recentDaily = qty7 / Math.min(7, windowDays);
+      const daysLeft = avgDaily > 0 ? p.stock / avgDaily : Infinity;
+      const lastSale = ps.length ? Math.max(...ps.map(m => m.ts)) : null;
+      const rop = (p.minStock !== null && p.minStock !== undefined && p.minStock !== '') ? +p.minStock : avgDaily * (lead + safety);
+      const target = avgDaily * (lead + cover + safety);
+      let reorderQty = Math.max(0, target - p.stock);
+      reorderQty = p.unit === 'kg' || p.unit === 'L' ? Math.ceil(reorderQty) : Math.ceil(reorderQty);
+      let status = 'ok';
+      if (p.stock <= 0) status = 'out';
+      else if (p.stock <= rop && (avgDaily > 0 || rop > 0)) status = 'low';
+      else if ((!lastSale || now - lastSale > 14 * DAY) || (avgDaily > 0 && daysLeft > 60)) status = 'slow';
+      if ((status === 'low' || status === 'out') && reorderQty === 0) reorderQty = Math.max(1, Math.ceil(rop - p.stock + 1));
+      const trend = avgDaily > 0 ? (recentDaily - avgDaily) / avgDaily : 0;
+      return { id: p.id, p, sold, qty7, rev7, revWin, avgDaily, recentDaily, daysLeft, lastSale, rop, reorderQty,
+        status, trend, reorderCost: reorderQty * (p.cost || p.price * 0.75 || 0) };
+    });
+    return { windowDays, rows };
+  }
+
+  return { strip, matchProduct, parseCommand, convertQty, analyze, dailySeries, sim };
+})();
+
+</script>
+<script>/* ===== ShelfSense AI v2 — dependency-free UI ===== */
+(() => {
+const DAY = 864e5, KEY = 'shelfsense_v1';
+const $ = s => document.querySelector(s);
+const uid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const CAT = { Produce: '🥬', Fruits: '🍌', Vegetables: '🥕', Dairy: '🥛', Bakery: '🍞', Beverages: '🥤', Grains: '🌾', Pantry: '🥫', Snacks: '🍪', Household: '🧴', 'Personal Care': '🧼', Meat: '🥩', Frozen: '🧊', Other: '📦' };
+const NAME_EMOJI = [[/sugar|azucar/, '🍬'], [/rice|arroz/, '🍚'], [/milk|leche/, '🥛'], [/bread|\bpan\b/, '🍞'], [/egg|huevo/, '🥚'], [/oil|aceite/, '🫗'], [/cola|coke|soda/, '🥤'], [/banana|banano/, '🍌'], [/tomato|tomate/, '🍅'], [/pasta|spaghetti/, '🍝'], [/coffee|cafe/, '☕'], [/soap|jabon/, '🧼'], [/salt|\bsal\b/, '🧂'], [/bean|frijol/, '🫘'], [/apple|manzana/, '🍎'], [/orange|naranja/, '🍊'], [/water|agua/, '💧'], [/cheese|queso/, '🧀'], [/chicken|pollo/, '🍗'], [/carrot|zanahoria/, '🥕'], [/broccoli/, '🥦'], [/beer|cerveza/, '🍺'], [/chip|snack/, '🍟']];
+const COCO = { bottle: ['Bottled drink', 'Beverages'], banana: ['Bananas', 'Fruits'], apple: ['Apples', 'Fruits'], orange: ['Oranges', 'Fruits'], broccoli: ['Broccoli', 'Vegetables'], carrot: ['Carrots', 'Vegetables'], sandwich: ['Sandwich', 'Bakery'], donut: ['Donuts', 'Bakery'], cake: ['Cake', 'Bakery'], cup: ['Cup', 'Household'], bowl: ['Bowl', 'Household'], book: ['Notebook', 'Other'], scissors: ['Scissors', 'Household'], toothbrush: ['Toothbrush', 'Personal Care'] };
+const UNITS = ['unit', 'kg', 'g', 'L', 'ml', 'pack'];
+const DEF = { storeName: 'My Grocery Store', currency: '$', apiKey: '', model: 'gemini-2.5-flash', engine: 'auto', lang: 'en-US', autoApply: true, speak: true, leadDays: 3, coverDays: 7, safetyDays: 2, windowDays: 28, espUrl: 'http://192.168.1.50/capture' };
+const I = {
+  logo: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h2l2.4 11.2a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 2-1.5L21 8H6.2"/><circle cx="10" cy="20.5" r="1.3"/><circle cx="17" cy="20.5" r="1.3"/><path d="M12 8.5l1 2 2 .4-1.5 1.4.4 2-1.9-1-1.9 1 .4-2-1.5-1.4 2-.4z" fill="currentColor" stroke="none"/></svg>',
+  home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg>',
+  scan: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><rect x="7" y="7" width="10" height="10" rx="2"/></svg>',
+  mic: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v4M8 21h8"/></svg>',
+  stop: '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="3"/></svg>',
+  box: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8M12 13v8"/></svg>',
+  gear: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>',
+  cart: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h2l2.4 11.2a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 2-1.5L21 8H6.2"/><circle cx="10" cy="20.5" r="1.3"/><circle cx="17" cy="20.5" r="1.3"/></svg>',
+  search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>'
+};
+
+/* ---------- state ---------- */
+let saved = {}; try { saved = JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) {}
+const S = { products: saved.products || [], moves: saved.moves || [], settings: Object.assign({}, DEF, saved.settings || {}) };
+const U = { tab: 'home', scan: { image: null, dets: [], busy: false, status: '', camOn: false, live: false, engine: '' },
+  voice: { listening: false, transcript: '', parsed: null, busy: false }, inv: { q: '', cat: 'All', sort: 'name' }, ai: { busy: false, text: '' }, edit: null };
+let stream = null, coco = null, liveTimer = null, rec = null;
+const save = () => {
+  S.savedAt = Date.now();
+  try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { toast('Storage full — export your data', 'err'); }
+  if (window.__cloudPut) window.__cloudPut();
+};
+
+/* ---------- helpers ---------- */
+const set = () => S.settings;
+const money = n => set().currency + (Number(n) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fq = (q, unit, dec) => {
+  if (!isFinite(q)) return '–';
+  const d = dec !== undefined ? dec : (unit === 'kg' || unit === 'L' ? 2 : 1);
+  return (Math.round(q * 10 ** d) / 10 ** d).toLocaleString(undefined, { maximumFractionDigits: d }) + (unit && unit !== 'unit' ? ' ' + unit : '');
+};
+const daysTxt = d => !isFinite(d) ? 'no recent sales' : d < 1 ? '< 1 day left' : '~' + Math.round(d) + ' days left';
+const ago = ts => { const s = (Date.now() - ts) / 1000; return s < 60 ? 'just now' : s < 3600 ? Math.round(s / 60) + ' min ago' : s < 86400 ? Math.round(s / 3600) + ' h ago' : Math.round(s / 86400) + ' d ago'; };
+const emoji = p => { const n = Core.strip(p.name); for (const [re, e] of NAME_EMOJI) if (re.test(n)) return e; return CAT[p.category] || '📦'; };
+const prod = id => S.products.find(p => p.id === id);
+const color = s => ({ ok: 'var(--ok)', low: 'var(--warn)', out: 'var(--bad)', slow: 'var(--slow)' }[s]);
+function toast(msg, type = '', ms = 3200) {
+  const el = document.createElement('div'); el.className = 'toast ' + type; el.textContent = msg;
+  $('#toasts').appendChild(el); setTimeout(() => el.remove(), ms);
+}
+function speak(msg) {
+  if (!set().speak || !window.speechSynthesis) return;
+  try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(msg); u.lang = set().lang; u.rate = 1.05; speechSynthesis.speak(u); } catch (e) {}
+}
+function loadScript(src) { return new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('Could not download the on-device model (offline?)')); document.head.appendChild(s); }); }
+const fileToURL = f => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(f); });
+const resize = (src, max = 1280) => new Promise((res, rej) => { const im = new Image(); im.onload = () => { const k = Math.min(1, max / Math.max(im.width, im.height)); const c = document.createElement('canvas'); c.width = Math.round(im.width * k); c.height = Math.round(im.height * k); c.getContext('2d').drawImage(im, 0, 0, c.width, c.height); res(c.toDataURL('image/jpeg', .85)); }; im.onerror = () => rej(new Error('Could not read image')); im.src = src; });
+function drawBoxes(cv, w, h, dets) {
+  cv.width = w; cv.height = h; const x = cv.getContext('2d'); x.clearRect(0, 0, w, h);
+  const lw = Math.max(2, w / 260), fs = Math.max(14, w / 42); x.font = `800 ${fs}px Inter,system-ui,sans-serif`;
+  dets.forEach((d, i) => {
+    if (!d.box || d.box.length !== 4 || d.include === false) return;
+    const [y0, x0, y1, x1] = d.box.map(Number), X = x0 / 1000 * w, Y = y0 / 1000 * h, W = (x1 - x0) / 1000 * w, H = (y1 - y0) / 1000 * h;
+    const col = ['#10b981', '#06b6d4', '#6366f1', '#f59e0b', '#ec4899', '#84cc16', '#f97316'][i % 7];
+    x.strokeStyle = col; x.lineWidth = lw; x.beginPath(); x.roundRect ? x.roundRect(X, Y, W, H, lw * 3) : x.rect(X, Y, W, H); x.stroke();
+    x.fillStyle = col + '22'; x.fill();
+    const label = d.name + (d.count > 1 ? ' ×' + d.count : ''), tw = x.measureText(label).width + 14, ty = Math.max(0, Y - fs - 10);
+    x.fillStyle = col; x.fillRect(X, ty, tw, fs + 10); x.fillStyle = '#fff'; x.fillText(label, X + 7, ty + fs + 2);
+  });
+}
+const A = () => Core.analyze(S.products, S.moves, set());
+
+/* ---------- Gemini ---------- */
+async function gemini(parts, json = true) {
+  if (!set().apiKey) throw new Error('No Gemini API key');
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(set().model)}:generateContent?key=${encodeURIComponent(set().apiKey)}`;
+  const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ role: 'user', parts }], generationConfig: json ? { responseMimeType: 'application/json', temperature: .2 } : { temperature: .5 } }) });
+  if (!r.ok) { let m = 'HTTP ' + r.status; try { m = (await r.json()).error.message; } catch (e) {} throw new Error('Gemini: ' + m); }
+  const d = await r.json(); const t = (d.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('');
+  return json ? JSON.parse(t.replace(/```json|```/g, '').trim()) : t.trim();
+}
+
+/* =========================================================== VIEWS */
+function vHome() {
+  const a = A(), rows = a.rows, now = Date.now(), d0 = new Date(); d0.setHours(0, 0, 0, 0);
+  const sales = S.moves.filter(m => m.type === 'sale');
+  const today = sales.filter(m => m.ts >= d0.getTime()), s7 = sales.filter(m => m.ts >= now - 7 * DAY);
+  const low = rows.filter(r => r.status === 'low' || r.status === 'out').sort((x, y) => x.daysLeft - y.daysLeft);
+  const reorder = rows.filter(r => r.reorderQty > 0 && r.status !== 'slow').sort((x, y) => x.daysLeft - y.daysLeft);
+  const best = rows.filter(r => r.rev7 > 0).sort((x, y) => y.rev7 - x.rev7).slice(0, 5);
+  const slow = rows.filter(r => r.status === 'slow').sort((x, y) => y.p.stock * (y.p.cost || y.p.price) - x.p.stock * (x.p.cost || x.p.price)).slice(0, 5);
+  const health = rows.length ? Math.round(rows.filter(r => r.status === 'ok' || r.status === 'slow').length / rows.length * 100) : 100;
+  const stockVal = S.products.reduce((s, p) => s + Math.max(0, p.stock) * (p.cost || p.price * .75 || 0), 0);
+  const total = reorder.reduce((s, r) => s + r.reorderCost, 0);
+  const h = new Date().getHours(), greet = h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
+  let o = '';
+  if (!S.products.length) o += `<div class="card"><div class="ch"><h2><span class="ico t-info">👋</span>Set up your store in 3 steps</h2></div>
+    <div class="onb"><div><span>1</span>Scan your shelves — AI builds the inventory</div><div><span>2</span>Say "One kilogram of sugar sold"</div><div><span>3</span>Get alerts and what to reorder</div></div>
+    <div class="g2"><button class="btn pri" data-a="tab" data-v="scan">📸 Scan shelves</button><button class="btn sec" data-a="demo">✨ Try demo store</button></div></div>`;
+  o += `<div class="hero"><div class="row"><div><div class="g">${greet} · Today's sales</div><div class="big">${money(today.reduce((s, m) => s + m.total, 0))}</div>
+    <div class="sm">${today.length} sales recorded today</div></div>
+    <div class="ring" style="--p:${health}"><div><b>${health}%</b><small>Stock health</small></div></div></div>
+    <div class="hstats"><div><b>${money(s7.reduce((s, m) => s + m.total, 0))}</b><span>Revenue · 7d</span></div><div><b style="color:${low.length ? '#fca5a5' : '#6ee7b7'}">${low.length}</b><span>Need reorder</span></div><div><b>${money(stockVal)}</b><span>Stock value</span></div></div></div>`;
+  o += `<div class="qa"><button data-a="tab" data-v="scan"><span class="ic" style="background:linear-gradient(135deg,#10b981,#06b6d4)">${I.scan}</span>Scan shelf</button>
+    <button data-a="tab" data-v="sell"><span class="ic" style="background:linear-gradient(135deg,#06b6d4,#6366f1)">${I.mic}</span>Voice sale</button>
+    <button data-a="share" ${reorder.length ? '' : 'disabled style="opacity:.5"'}><span class="ic" style="background:linear-gradient(135deg,#6366f1,#a855f7)">${I.cart}</span>Order list</button></div>`;
+  if (low.length) o += `<div class="card"><div class="ch"><h2><span class="ico t-bad">🚨</span>Low-stock alerts</h2><span class="sub">${low.length} item${low.length > 1 ? 's' : ''}</span></div><div class="list">${low.map(r => `
+    <div class="it"><div class="em">${emoji(r.p)}</div><div class="mid"><div class="tt">${esc(r.p.name)}</div><div class="ss">${fq(r.p.stock, r.p.unit)} left · ${daysTxt(r.daysLeft)}</div>
+    <div class="bar"><i style="width:${Math.max(4, Math.min(100, r.p.stock / Math.max(r.rop, .01) * 50))}%;background:${color(r.status)}"></i></div></div>
+    <div class="rt"><span class="badge b-${r.status}">${r.status === 'out' ? 'Out' : 'Low'}</span></div></div>`).join('')}</div></div>`;
+  o += `<div class="card"><div class="ch"><h2><span class="ico t-ind">🤖</span>What to buy next</h2><button class="btn sm sec" data-a="share" ${reorder.length ? '' : 'disabled'}>Share</button></div>
+    <div class="muted small" style="margin:-4px 0 6px">AI forecast · covers ${set().coverDays} days + ${set().safetyDays} safety days · lead time ${set().leadDays}d · based on ${a.windowDays} days of sales</div>
+    ${reorder.length ? reorder.map(r => `<div class="order"><div class="em" style="width:38px;height:38px;flex-basis:38px;font-size:19px">${emoji(r.p)}</div>
+      <div class="mid"><div class="tt">${esc(r.p.name)}</div><div class="ss">Stock ${fq(r.p.stock, r.p.unit)} · sells ${fq(r.avgDaily, r.p.unit, 1)}/day · ${daysTxt(r.daysLeft)}</div></div>
+      <div class="rt"><div class="q">+${fq(r.reorderQty, r.p.unit)}</div><div class="ss">${money(r.reorderCost)}</div></div></div>`).join('') + `<div class="total"><span>Estimated purchase</span><b>${money(total)}</b></div>`
+    : `<div class="empty"><span class="e">✅</span>Stock levels are healthy — nothing to reorder.</div>`}</div>`;
+  if (sales.length) o += `<div class="card"><div class="ch"><h2><span class="ico t-info">📈</span>Daily revenue</h2><span class="sub">last 14 days</span></div><div class="chart">${chart(Core.dailySeries(S.moves, 14))}</div></div>`;
+  if (best.length) o += `<div class="card"><div class="ch"><h2><span class="ico t-ok">🏆</span>Best sellers</h2><span class="sub">revenue · 7 days</span></div><div class="list">${best.map((r, i) => `
+    <div class="it"><div class="em">${['🥇', '🥈', '🥉', '4', '5'][i]}</div><div class="mid"><div class="tt">${esc(r.p.name)}</div>
+    <div class="ss">${fq(r.qty7, r.p.unit)} sold · <b style="color:${r.trend >= 0 ? 'var(--ok)' : 'var(--bad)'}">${r.trend >= 0 ? '▲' : '▼'} ${Math.abs(Math.round(r.trend * 100))}%</b> vs avg</div>
+    <div class="bar"><i style="width:${r.rev7 / best[0].rev7 * 100}%;background:var(--grad)"></i></div></div><div class="rt"><b>${money(r.rev7)}</b></div></div>`).join('')}</div></div>`;
+  if (slow.length) o += `<div class="card"><div class="ch"><h2><span class="ico t-slow">🐢</span>Slow movers</h2><span class="sub">cash tied up</span></div><div class="list">${slow.map(r => `
+    <div class="it"><div class="em">${emoji(r.p)}</div><div class="mid"><div class="tt">${esc(r.p.name)}</div><div class="ss">${fq(r.p.stock, r.p.unit)} in stock · ${r.lastSale ? 'last sold ' + ago(r.lastSale) : 'never sold'}</div></div>
+    <div class="rt"><b>${money(r.p.stock * (r.p.cost || r.p.price * .75))}</b><div class="ss">${daysTxt(r.daysLeft)}</div></div></div>`).join('')}</div>
+    <div class="muted small mt">💡 Don't reorder these yet — try a bundle or small discount.</div></div>`;
+  if (S.products.length) o += `<div class="card"><div class="ch"><h2><span class="ico t-ind">✨</span>AI business advisor</h2><button class="btn sm ${U.ai.text ? 'sec' : 'pri'}" data-a="advisor" ${U.ai.busy ? 'disabled' : ''}>${U.ai.busy ? 'Thinking…' : U.ai.text ? 'Refresh' : 'Analyze'}</button></div>
+    ${U.ai.busy ? `<div class="empty"><div class="spin dk"></div>Reviewing sales, stock and trends…</div>` : U.ai.text ? `<div class="ai">${esc(U.ai.text)}</div>` : `<div class="muted">Plain-language briefing: what's selling, what's running out and what to buy next.</div>`}</div>`;
+  return o;
+}
+function chart(s) {
+  const W = 340, H = 150, pad = 18, max = Math.max(1, ...s.map(x => x.value)), bw = (W - pad) / s.length;
+  let g = `<svg viewBox="0 0 ${W} ${H + 18}"><defs><linearGradient id="bg1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#06b6d4"/><stop offset="1" stop-color="#10b981"/></linearGradient></defs>`;
+  [0, .5, 1].forEach(f => { const y = 6 + (H - 6) * (1 - f); g += `<line x1="${pad}" x2="${W}" y1="${y}" y2="${y}" stroke="#eef2f6"/><text x="0" y="${y + 3}">${Math.round(max * f)}</text>`; });
+  s.forEach((x, i) => {
+    const bh = Math.max(2, (H - 6) * x.value / max), X = pad + i * bw + bw * .18, last = i === s.length - 1;
+    g += `<rect x="${X}" y="${H - bh}" width="${bw * .64}" height="${bh}" rx="4" fill="${last ? 'url(#bg1)' : '#cdeee6'}"><title>${x.label}: ${money(x.value)}</title></rect>`;
+    if (i % 2 === (s.length - 1) % 2) g += `<text x="${X + bw * .32}" y="${H + 14}" text-anchor="middle">${x.label.split(' ').reverse().join(' ')}</text>`;
+  });
+  return g + '</svg>';
+}
+function vScan() {
+  const sc = U.scan, useG = set().engine === 'gemini' || (set().engine === 'auto' && set().apiKey);
+  let o = `<div class="card"><div class="ch"><h2><span class="ico t-ok">📸</span>Scan the store</h2><span class="sub">${useG ? 'Gemini Vision' : 'On-device AI'}</span></div>
+  <div class="viewer">
+    ${sc.camOn && !sc.image ? `<video id="video" playsinline muted autoplay></video><canvas id="liveCv"></canvas><span class="corner c1"></span><span class="corner c2"></span><span class="corner c3"></span><span class="corner c4"></span>${sc.live ? '' : '<div class="laser"></div>'}` : ''}
+    ${sc.image ? `<img id="shot" src="${sc.image}"><canvas id="shotCv"></canvas>` : ''}
+    ${!sc.camOn && !sc.image ? `<div class="ph"><div class="scanico">${I.scan}</div><b style="color:#fff;font-size:15px">Point at a shelf</b><br>Use the live camera, a photo, a shelf video, or your ESP32-CAM.</div>` : ''}
+    ${sc.busy ? `<div class="busy"><div><div class="spin"></div>${esc(sc.status)}</div></div>` : ''}
+  </div>`;
+  o += !sc.camOn ? `<div class="g2 mt"><button class="btn pri" data-a="cam">🎥 Live camera</button><button class="btn sec" data-a="pick" data-v="photoIn">🖼️ Photos</button>
+     <button class="btn sec" data-a="pick" data-v="videoIn">🎞️ Shelf video</button><button class="btn sec" data-a="esp">📡 ESP32-CAM</button></div>`
+    : `<div class="g3 mt"><button class="btn pri" data-a="capture">◉ Capture</button><button class="btn sec" data-a="live">${sc.live ? '⏸ Live off' : '👁 Live AI'}</button><button class="btn ghost" data-a="camoff">✕ Close</button></div>`;
+  if (sc.image && !sc.busy) o += `<button class="btn ghost w mt" data-a="rescan">↺ Scan again</button>`;
+  if (sc.live) o += `<div class="muted small mt">Live mode runs on-device and recognizes generic items (bottles, fruit, vegetables). Tap Capture for full product recognition${set().apiKey ? ' with Gemini' : ''}.</div>`;
+  o += `</div>`;
+  if (sc.dets.length) o += `<div class="card"><div class="ch"><h2><span class="ico t-info">🔎</span>${sc.dets.length} products found</h2><span class="sub">${esc(sc.engine)}</span></div>
+    <div class="muted small" style="margin:-4px 0 10px">Check names, quantities and prices, then save to inventory.</div><div class="list">${sc.dets.map((d, i) => `
+    <div class="det"><input type="checkbox" data-det="${i}" data-k="include" ${d.include ? 'checked' : ''}><div>
+      <input class="f" style="font-weight:700" value="${esc(d.name)}" data-det="${i}" data-k="name">
+      <div class="flex mt small" style="flex-wrap:wrap;gap:6px"><span class="badge ${d.matchId ? 'b-ok' : 'b-new'}">${d.matchId ? 'Updates ' + esc(prod(d.matchId)?.name || '') : 'New product'}</span>
+      ${d.confidence ? `<span class="muted small">${Math.round(d.confidence * 100)}% confidence</span>` : ''}<span class="muted small">${esc(d.category)}</span></div>
+      <div class="rowf"><input class="f" type="number" min="0" step="any" value="${d.count}" data-det="${i}" data-k="count" placeholder="Qty">
+      <select class="f" data-det="${i}" data-k="unit">${UNITS.map(u => `<option ${u === d.unit ? 'selected' : ''}>${u}</option>`).join('')}</select>
+      <input class="f" type="number" min="0" step="0.01" value="${d.price ?? ''}" data-det="${i}" data-k="price" placeholder="Price"></div></div></div>`).join('')}</div>
+    <div class="g2 mt2"><button class="btn pri" data-a="commit" data-v="add">➕ Add to stock</button><button class="btn sec" data-a="commit" data-v="set">🧮 Set as count</button></div>
+    <div class="muted small mt"><b>Add</b> = a new delivery on top of current stock. <b>Set</b> = a full shelf count.</div></div>`;
+  return o;
+}
+function vSell() {
+  const v = U.voice;
+  let o = `<div class="card"><div class="ch"><h2><span class="ico t-info">🎙️</span>Voice sales</h2><span class="sub">${esc(set().lang)}</span></div><div class="voice">
+    <button class="micbtn ${v.listening ? 'on' : ''}" data-a="listen">${v.listening ? I.stop : I.mic}</button>
+    <div class="wave ${v.listening ? 'on' : ''}">${'<i></i>'.repeat(13)}</div>
+    <div class="trans ${v.transcript ? '' : 'ph2'}" id="trans">${v.transcript ? '“' + esc(v.transcript) + '”' : v.listening ? 'Listening… say what you sold' : 'Tap the mic and say “One kilogram of sugar sold”'}</div>
+    ${v.busy ? '<div class="muted"><div class="spin dk" style="width:22px;height:22px;border-width:3px"></div>Understanding…</div>' : ''}</div>
+    <div class="inrow mt"><input class="f" id="typed" placeholder="…or type: sold 2 milk and 1 bread"><button class="btn pri" data-a="typed">Go</button></div>
+    <div class="ex">${['One kilogram of sugar sold', 'Sold two milk and three bread', 'Received 24 Coca-Cola', 'Vendí medio kilo de arroz'].map(e => `<button data-a="ex" data-v="${esc(e)}">${esc(e)}</button>`).join('')}</div></div>`;
+  if (v.parsed) o += `<div class="card"><div class="ch"><h2><span class="ico ${v.parsed.intent === 'sale' ? 't-ok' : 't-ind'}">${v.parsed.intent === 'sale' ? '🧾' : '📦'}</span>Confirm ${v.parsed.intent === 'sale' ? 'sale' : 'delivery'}</h2>
+    <select class="f" style="width:auto;padding:7px 10px" data-pk="intent"><option value="sale" ${v.parsed.intent === 'sale' ? 'selected' : ''}>Sale</option><option value="restock" ${v.parsed.intent === 'restock' ? 'selected' : ''}>Restock</option></select></div>
+    ${v.parsed.items.map((it, i) => `<div class="pi"><input class="f" type="number" min="0" step="any" value="${it.qty}" data-pi="${i}" data-k="qty">
+      <select class="f" data-pi="${i}" data-k="unit"><option value="">—</option>${UNITS.concat('dozen').map(u => `<option ${u === it.unit ? 'selected' : ''}>${u}</option>`).join('')}</select>
+      <select class="f" data-pi="${i}" data-k="productId"><option value="">❓ “${esc(it.query)}” — choose</option>${S.products.map(p => `<option value="${p.id}" ${p.id === it.productId ? 'selected' : ''}>${esc(p.name)} (${fq(p.stock, p.unit)})</option>`).join('')}</select></div>`).join('')}
+    <div class="g2 mt"><button class="btn pri" data-a="apply">✔ Record</button><button class="btn ghost" data-a="cancelParse">Cancel</button></div></div>`;
+  const rec = [...S.moves].sort((a, b) => b.ts - a.ts).slice(0, 15);
+  o += `<div class="card"><div class="ch"><h2><span class="ico t-ok">🕑</span>Recent activity</h2><span class="sub">${S.moves.length} records</span></div>
+    ${rec.length ? `<div class="list">${rec.map(m => { const p = prod(m.productId); return `<div class="it"><div class="em">${m.type === 'sale' ? '💵' : m.type === 'restock' ? '📦' : '🧮'}</div>
+      <div class="mid"><div class="tt">${m.type === 'sale' ? 'Sold' : m.type === 'restock' ? 'Received' : 'Adjusted'} ${fq(Math.abs(m.qty), p?.unit)} · ${esc(p?.name || '(deleted)')}</div>
+      <div class="ss">${ago(m.ts)} · ${esc(m.source || 'manual')}${m.text ? ' · “' + esc(m.text) + '”' : ''}</div></div>
+      <div class="rt">${m.type === 'sale' ? `<b>${money(m.total)}</b><br>` : ''}<button class="btn sm ghost" style="margin-top:4px" data-a="undo" data-v="${m.id}">Undo</button></div></div>`; }).join('')}</div>`
+      : `<div class="empty"><span class="e">🎤</span>No sales yet. Tap the mic to record your first one.</div>`}</div>`;
+  return o;
+}
+function stockList() {
+  const q = Core.strip(U.inv.q), rows = A().rows.filter(r => {
+    if (U.inv.cat === 'Low' && !(r.status === 'low' || r.status === 'out')) return false;
+    if (!['All', 'Low'].includes(U.inv.cat) && (r.p.category || 'Other') !== U.inv.cat) return false;
+    return !q || Core.strip(r.p.name + ' ' + (r.p.aliases || []).join(' ')).includes(q);
+  }).sort((a, b) => {
+    if (U.inv.sort === 'low') { const w = { out: 0, low: 1, slow: 2, ok: 3 }; return (w[a.status] - w[b.status]) || (a.daysLeft - b.daysLeft) || a.p.name.localeCompare(b.p.name); }
+    if (U.inv.sort === 'value') return (b.p.stock * (b.p.cost || b.p.price * .75 || 0)) - (a.p.stock * (a.p.cost || a.p.price * .75 || 0));
+    if (U.inv.sort === 'sold') return (b.lastSale || 0) - (a.lastSale || 0) || a.p.name.localeCompare(b.p.name);
+    return a.p.name.localeCompare(b.p.name);
+  });
+  const lead = +set().leadDays + +set().coverDays + +set().safetyDays;
+  return rows.length ? rows.map(r => `<div class="it"><div class="em" data-a="edit" data-v="${r.id}">${emoji(r.p)}</div>
+    <div class="mid" data-a="edit" data-v="${r.id}" style="cursor:pointer"><div class="tt">${esc(r.p.name)}</div><div class="ss">${money(r.p.price)}/${r.p.unit} · ${daysTxt(r.daysLeft)}</div>
+    <div class="bar"><i style="width:${Math.min(100, Math.max(3, r.p.stock / Math.max(r.rop * 3, r.avgDaily * lead, 1) * 100))}%;background:${color(r.status)}"></i></div></div>
+    <div class="rt flex" style="gap:6px"><button class="qb" data-a="qm" data-v="${r.id}" data-t="sale">−</button>
+    <div style="min-width:56px;text-align:center"><b>${fq(r.p.stock, r.p.unit)}</b><br><span class="badge b-${r.status}">${r.status}</span></div>
+    <button class="qb" data-a="qm" data-v="${r.id}" data-t="restock">+</button></div></div>`).join('')
+    : `<div class="empty"><span class="e">📦</span>No products${U.inv.q ? ' match your search' : ' yet — scan your shelves or tap +'}.</div>`;
+}
+function vStock() {
+  const cats = [...new Set(S.products.map(p => p.category || 'Other'))].sort();
+  const val = S.products.reduce((s, p) => s + Math.max(0, p.stock) * (p.cost || p.price * .75 || 0), 0);
+  const rows = A().rows;
+  const nOut = rows.filter(r => r.status === 'out').length, nLow = rows.filter(r => r.status === 'low').length;
+  return `<div class="card"><div class="ch"><h2><span class="ico t-ind">📦</span>Inventory</h2><button class="btn sm sec" data-a="invCsv">⬇️ CSV</button></div>
+    <div class="stats"><div><b>${S.products.length}</b><span>Products</span></div>
+      <div><b style="color:${nLow ? 'var(--warn)' : 'inherit'}">${nLow}</b><span>Low</span></div>
+      <div><b style="color:${nOut ? 'var(--bad)' : 'inherit'}">${nOut}</b><span>Out</span></div>
+      <div><b>${money(val)}</b><span>Stock value</span></div></div>
+    <div class="search">${I.search}<input class="f" id="q" placeholder="Search products…" value="${esc(U.inv.q)}"></div>
+    <div class="chips">${[['name', 'A–Z'], ['low', '⚠️ Need first'], ['value', '💰 Value'], ['sold', '🕑 Recently sold']].map(([v, l]) => `<button class="chip ${U.inv.sort === v ? 'on' : ''}" data-a="sort" data-v="${v}">${l}</button>`).join('')}</div>
+    <div class="chips">${['All', 'Low'].concat(cats).map(c => `<button class="chip ${U.inv.cat === c ? 'on' : ''}" data-a="cat" data-v="${esc(c)}">${c === 'Low' ? '⚠️ Low stock' : esc(c)}</button>`).join('')}</div>
+    <div class="list mt" id="stocklist">${stockList()}</div></div><div class="fab"><button class="btn pri" data-a="edit" data-v="">＋</button></div>`;
+}
+function vSettings() {
+  const s = set(), inp = (k, type = 'text', extra = '') => `<input class="f" type="${type}" data-set="${k}" value="${esc(s[k])}" ${extra}>`;
+  const tg = (k, t, d) => `<div class="sw"><div><b>${t}</b><div class="muted small">${d}</div></div><button class="tg ${s[k] ? 'on' : ''}" data-a="toggle" data-v="${k}"></button></div>`;
+  return `<div class="card"><div class="ch"><h2><span class="ico t-ok">🏪</span>Store</h2></div>
+    <label class="lb">Store name</label>${inp('storeName')}
+    <div class="g2"><div><label class="lb">Currency</label>${inp('currency')}</div><div><label class="lb">Voice language</label><select class="f" data-set="lang">${[['en-US', 'English (US)'], ['en-GB', 'English (UK)'], ['es-ES', 'Español (ES)'], ['es-MX', 'Español (MX)'], ['es-CR', 'Español (CR)'], ['hi-IN', 'Hindi'], ['fr-FR', 'Français'], ['pt-BR', 'Português']].map(([v, l]) => `<option value="${v}" ${v === s.lang ? 'selected' : ''}>${l}</option>`).join('')}</select></div></div></div>
+  <div class="card"><div class="ch"><h2><span class="ico t-ind">🤖</span>AI engine</h2><span class="pill ${s.apiKey ? '' : 'off'}"><i></i>${s.apiKey ? 'Gemini on' : 'On-device'}</span></div>
+    <label class="lb">Google Gemini API key</label><div class="inrow">${inp('apiKey', 'password', 'id="key" placeholder="AIza…" autocomplete="off"')}<button class="btn sm ghost" data-a="showkey">Show</button></div>
+    <div class="muted small mt">Get a free key at aistudio.google.com. Saved only on this device. Without a key, detection and voice parsing run on-device.</div>
+    <div class="g2"><div><label class="lb">Model</label>${inp('model')}</div><div><label class="lb">Detection</label><select class="f" data-set="engine">${[['auto', 'Auto'], ['gemini', 'Gemini only'], ['coco', 'On-device only']].map(([v, l]) => `<option value="${v}" ${v === s.engine ? 'selected' : ''}>${l}</option>`).join('')}</select></div></div>
+    <button class="btn sec w mt" data-a="test">🔌 Test Gemini connection</button>
+    <label class="lb">ESP32-CAM capture URL</label>${inp('espUrl', 'text', 'placeholder="http://192.168.1.50/capture"')}</div>
+  <div class="card"><div class="ch"><h2><span class="ico t-info">🎙️</span>Voice</h2></div>${tg('autoApply', 'Auto-record', 'Save immediately when every product is recognized')}${tg('speak', 'Spoken confirmation', 'Reads back the sale and low-stock warnings')}</div>
+  <div class="card"><div class="ch"><h2><span class="ico t-warn">📊</span>Reorder rules</h2></div>
+    <div class="g3"><div><label class="lb">Lead days</label>${inp('leadDays', 'number', 'min="0"')}</div><div><label class="lb">Cover days</label>${inp('coverDays', 'number', 'min="1"')}</div><div><label class="lb">Safety days</label>${inp('safetyDays', 'number', 'min="0"')}</div></div>
+    <label class="lb">Sales history window (days)</label>${inp('windowDays', 'number', 'min="7"')}
+    <div class="muted small mt">Reorder point = avg daily sales × (lead + safety). Order = avg daily × (lead + cover + safety) − stock.</div></div>
+  <div class="card"><div class="ch"><h2><span class="ico t-slow">💾</span>Data</h2></div><div class="g2">
+    <button class="btn sec" data-a="demo">✨ Load demo</button><button class="btn sec" data-a="export">⬇️ Export</button>
+    <button class="btn sec" data-a="pick" data-v="importIn">⬆️ Import</button><button class="btn danger" data-a="reset">🗑️ Reset all</button></div></div>
+  <div class="muted small" style="text-align:center;padding:4px 0 16px">ShelfSense AI · Smart Retail Assistant</div>`;
+}
+function vSheet() {
+  const e = U.edit; if (!e) return '';
+  const hist = e.id ? S.moves.filter(m => m.productId === e.id).sort((a, b) => b.ts - a.ts).slice(0, 8) : [];
+  return `<div class="sheetbg" data-a="closeSheet"><div class="sheet" data-stop"><div class="grab"></div><h3>${e.id ? 'Edit product' : 'New product'}</h3>
+    <label class="lb">Name</label><input class="f" id="e_name" value="${esc(e.name)}">
+    <label class="lb">Voice aliases (comma separated)</label><input class="f" id="e_alias" value="${esc((e.aliases || []).join(', '))}" placeholder="coke, soda, refresco">
+    <div class="g2"><div><label class="lb">Category</label><select class="f" id="e_cat">${Object.keys(CAT).map(c => `<option ${c === e.category ? 'selected' : ''}>${c}</option>`).join('')}</select></div>
+    <div><label class="lb">Unit</label><select class="f" id="e_unit">${UNITS.map(u => `<option ${u === e.unit ? 'selected' : ''}>${u}</option>`).join('')}</select></div>
+    <div><label class="lb">In stock</label><input class="f" id="e_stock" type="number" step="any" value="${e.stock}"></div>
+    <div><label class="lb">Min stock</label><input class="f" id="e_min" type="number" step="any" value="${e.minStock ?? ''}" placeholder="auto (AI)"></div>
+    <div><label class="lb">Sell price</label><input class="f" id="e_price" type="number" step="0.01" value="${e.price}"></div>
+    <div><label class="lb">Cost price</label><input class="f" id="e_cost" type="number" step="0.01" value="${e.cost}"></div></div>
+    <div class="g2 mt2"><button class="btn pri" data-a="saveP">Save</button>${e.id ? '<button class="btn danger" data-a="delP">Delete</button>' : '<button class="btn ghost" data-a="closeSheet">Cancel</button>'}</div>
+    ${e.id ? `<div class="h3">⚖️ Adjust stock</div>
+    <div class="rowf"><select class="f" id="a_mode"><option value="set">Set count</option><option value="add">Add</option><option value="remove">Remove</option></select>
+    <input class="f" id="a_qty" type="number" step="any" min="0" placeholder="Qty"></div>
+    <input class="f mt" id="a_note" placeholder="Note — delivery, spoilage, shelf count…">
+    <button class="btn sec w mt2" data-a="adjustStock">Apply adjustment</button>
+    <div class="muted small mt">Set = physical shelf count. The change is logged with your note.</div>
+    <div class="h3">🕑 Recent activity</div>
+    ${hist.length ? `<div class="list">${hist.map(m => `<div class="it"><div class="em">${m.type === 'sale' ? '💵' : m.type === 'restock' ? '📦' : '🧮'}</div>
+      <div class="mid"><div class="tt">${(m.delta ?? (m.type === 'sale' ? -m.qty : m.qty)) >= 0 ? '+' : '−'}${fq(Math.abs(m.delta ?? m.qty), e.unit)} ${m.type === 'sale' ? 'sold' : m.type === 'restock' ? 'received' : 'adjusted'}</div>
+      <div class="ss">${ago(m.ts)} · ${esc(m.source || 'manual')}${m.text ? ' · ' + esc(m.text) : ''}</div></div></div>`).join('')}</div>`
+      : '<div class="muted small">No movements recorded yet.</div>'}` : ''}</div></div>`;
+}
+
+/* =========================================================== RENDER */
+function render() {
+  $('#storeName').textContent = set().storeName;
+  const pill = $('#enginePill'); pill.className = 'pill ' + (set().apiKey ? '' : 'off'); pill.innerHTML = `<i></i>${set().apiKey ? 'Gemini AI' : 'On-device'}`;
+  const V = { home: vHome, scan: vScan, sell: vSell, stock: vStock, settings: vSettings }[U.tab];
+  $('#view').innerHTML = `<div class="view">${V()}</div>`;
+  $('#sheet').innerHTML = vSheet();
+  document.querySelectorAll('.nav button').forEach(b => b.classList.toggle('on', b.dataset.v === U.tab));
+  if (U.tab === 'scan') {
+    const v = $('#video'); if (v && stream) { v.srcObject = stream; v.play().catch(() => {}); }
+    const img = $('#shot'); if (img) { const draw = () => drawBoxes($('#shotCv'), img.naturalWidth, img.naturalHeight, U.scan.dets); img.complete ? draw() : img.onload = draw; }
+  }
+}
+const go = t => { if (t !== 'scan') stopCam(); if (t !== 'sell' && rec) try { rec.stop(); } catch (e) {} U.tab = t; render(); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+
+/* =========================================================== SCAN */
+async function startCam() {
+  if (!navigator.mediaDevices?.getUserMedia) { toast('Live camera needs HTTPS — opening photo capture instead', 'warn'); $('#photoIn').click(); return; }
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+    U.scan.image = null; U.scan.dets = []; U.scan.camOn = true; render();
+  } catch (e) { toast('Camera unavailable (' + e.message + ') — opening photos', 'warn', 4500); $('#photoIn').click(); }
+}
+function stopCam() { U.scan.live = false; clearTimeout(liveTimer); if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; } U.scan.camOn = false; }
+function capture() {
+  const v = $('#video'); if (!v || !v.videoWidth) return toast('Camera not ready yet', 'warn');
+  const k = Math.min(1, 1280 / Math.max(v.videoWidth, v.videoHeight)), c = document.createElement('canvas'); c.width = v.videoWidth * k; c.height = v.videoHeight * k;
+  c.getContext('2d').drawImage(v, 0, 0, c.width, c.height); const url = c.toDataURL('image/jpeg', .85); stopCam(); analyze([url]);
+}
+async function frames(file, n) {
+  const url = URL.createObjectURL(file), v = document.createElement('video'); v.muted = true; v.playsInline = true; v.preload = 'auto'; v.src = url;
+  await new Promise((res, rej) => { v.onloadedmetadata = res; v.onerror = () => rej(new Error('This video format cannot be read')); });
+  const dur = isFinite(v.duration) && v.duration > 0 ? v.duration : 1, out = [];
+  for (let i = 0; i < n; i++) {
+    await new Promise(res => { const done = () => { v.removeEventListener('seeked', done); res(); }; v.addEventListener('seeked', done); v.currentTime = dur * (i + .5) / n; setTimeout(done, 2500); });
+    const k = Math.min(1, 1280 / Math.max(v.videoWidth, v.videoHeight)), c = document.createElement('canvas'); c.width = v.videoWidth * k; c.height = v.videoHeight * k;
+    c.getContext('2d').drawImage(v, 0, 0, c.width, c.height); out.push(c.toDataURL('image/jpeg', .8));
+  }
+  URL.revokeObjectURL(url); return out;
+}
+async function esp() {
+  const u = set().espUrl; if (!u) return toast('Set the ESP32-CAM URL in Settings', 'warn');
+  U.scan.busy = true; U.scan.status = 'Grabbing frame from ESP32-CAM…'; render();
+  try { const r = await fetch(u + (u.includes('?') ? '&' : '?') + '_t=' + Date.now(), { cache: 'no-store' }); if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await resize(await fileToURL(await r.blob())); U.scan.busy = false; analyze([d]); }
+  catch (e) { U.scan.busy = false; render(); toast('ESP32-CAM unreachable (' + e.message + '). Same Wi-Fi? Open the app over http on your LAN.', 'err', 6000); }
+}
+async function loadCoco() {
+  if (coco) return coco;
+  U.scan.status = 'Loading on-device AI model (first time only)…'; render();
+  if (!window.tf) await loadScript('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js');
+  if (!window.cocoSsd) await loadScript('https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js');
+  coco = await cocoSsd.load({ base: 'lite_mobilenet_v2' }); return coco;
+}
+async function cocoDetect(url) {
+  const m = await loadCoco(); U.scan.status = 'Detecting items on-device…'; render();
+  const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
+  const g = {};
+  (await m.detect(img, 40, .35)).forEach(p => {
+    if (p.class === 'person') return;
+    const [name, cat] = COCO[p.class] || [p.class[0].toUpperCase() + p.class.slice(1), 'Other'], [x, y, w, h] = p.bbox;
+    const b = [y / img.height * 1000, x / img.width * 1000, (y + h) / img.height * 1000, (x + w) / img.width * 1000];
+    const e = g[name] || (g[name] = { name, category: cat, count: 0, unit: 'unit', confidence: 0, bs: [] }); e.count++; e.confidence = Math.max(e.confidence, p.score); e.bs.push(b);
+  });
+  return Object.values(g).map(e => ({ ...e, box: [Math.min(...e.bs.map(b => b[0])), Math.min(...e.bs.map(b => b[1])), Math.max(...e.bs.map(b => b[2])), Math.max(...e.bs.map(b => b[3]))] }));
+}
+async function geminiDetect(imgs) {
+  const prompt = `You are the inventory vision system of a small grocery store. ${imgs.length > 1 ? `These ${imgs.length} images are frames from one video sweep of the same shelves; merge them and do NOT double-count items seen in several frames.` : 'Analyze the shelf image.'}
+Identify every distinct retail product. Read brand and size from packaging when legible (e.g. "Coca-Cola 600ml"), else use a clear generic name ("Bananas", "White Sugar 1kg").
+Return ONLY a JSON array, one object per distinct product: {"name": string, "category": one of ${JSON.stringify(Object.keys(CAT))}, "count": integer visible units (estimate kg for loose produce), "unit": "unit"|"kg"|"L"|"pack", "confidence": 0-1, "price_guess": typical local retail price number or null, "box_2d": [ymin,xmin,ymax,xmax] normalized 0-1000 around all units of that product in the FIRST image, or null}.`;
+  const r = await gemini([{ text: prompt }, ...imgs.map(d => ({ inline_data: { mime_type: 'image/jpeg', data: d.split(',')[1] } }))]);
+  return (Array.isArray(r) ? r : (r.products || r.items || [])).filter(x => x && x.name).map(x => ({ name: x.name, category: x.category, count: Math.round(+x.count || 1), unit: x.unit, confidence: x.confidence, price: x.price_guess, box: x.box_2d || null }));
+}
+async function analyze(imgs) {
+  const sc = U.scan; sc.image = imgs[0]; sc.dets = []; sc.busy = true;
+  const useG = set().engine === 'gemini' || (set().engine === 'auto' && set().apiKey);
+  sc.status = useG ? `Gemini is identifying products in ${imgs.length} image${imgs.length > 1 ? 's' : ''}…` : 'Preparing on-device AI…'; render();
+  let d = [];
+  try { if (useG) { d = await geminiDetect(imgs); sc.engine = 'Gemini Vision'; } else { d = await cocoDetect(imgs[0]); sc.engine = 'On-device COCO-SSD'; } }
+  catch (e) {
+    if (useG && set().engine === 'auto') { toast('Gemini failed — using on-device model. ' + e.message, 'warn', 5000); try { d = await cocoDetect(imgs[0]); sc.engine = 'On-device COCO-SSD'; } catch (e2) { toast(e2.message, 'err', 5000); } }
+    else toast(e.message, 'err', 5000);
+  }
+  sc.busy = false;
+  sc.dets = d.map(x => { const m = Core.matchProduct(x.name, S.products); return { name: x.name, category: CAT[x.category] ? x.category : 'Other', count: Math.max(0, +x.count || 1), unit: UNITS.includes(x.unit) ? x.unit : 'unit', price: m.product ? m.product.price : (+x.price || null), confidence: x.confidence, box: x.box, include: true, matchId: m.product?.id || null }; });
+  render();
+  if (d.length) toast(`Found ${d.length} product type${d.length > 1 ? 's' : ''}`, 'ok'); else toast('No products recognized — try a closer, well-lit photo' + (set().apiKey ? '' : ' or add a Gemini key'), 'warn', 5000);
+}
+async function toggleLive() {
+  if (U.scan.live) { U.scan.live = false; clearTimeout(liveTimer); render(); return; }
+  try { U.scan.busy = true; await loadCoco(); } catch (e) { toast(e.message, 'err'); }
+  U.scan.busy = false; if (!coco) return render();
+  U.scan.live = true; render(); loop();
+}
+async function loop() {
+  if (!U.scan.live || !U.scan.camOn) return;
+  const v = $('#video'), c = $('#liveCv');
+  if (v && v.videoWidth && c) {
+    const p = await coco.detect(v, 20, .45);
+    if (U.scan.live && $('#liveCv')) drawBoxes($('#liveCv'), v.videoWidth, v.videoHeight, p.filter(x => x.class !== 'person').map(x => { const [X, Y, W, H] = x.bbox; return { name: (COCO[x.class] || [x.class])[0], count: 1, box: [Y / v.videoHeight * 1000, X / v.videoWidth * 1000, (Y + H) / v.videoHeight * 1000, (X + W) / v.videoWidth * 1000] }; }));
+  }
+  liveTimer = setTimeout(loop, 300);
+}
+function commit(mode) {
+  let a = 0, u = 0;
+  U.scan.dets.filter(d => d.include && d.name.trim()).forEach(d => {
+    const q = +d.count || 0; let p = d.matchId && prod(d.matchId);
+    if (p) { const b = p.stock; p.stock = mode === 'set' ? q : +(p.stock + q).toFixed(3); if (d.price) p.price = +d.price;
+      S.moves.push({ id: uid(), productId: p.id, type: mode === 'set' ? 'adjust' : 'restock', qty: +(p.stock - b).toFixed(3), delta: +(p.stock - b).toFixed(3), ts: Date.now(), source: 'scan' }); u++; }
+    else { p = { id: uid(), name: d.name.trim(), aliases: [], category: d.category, unit: d.unit, stock: q, price: +d.price || 0, cost: d.price ? +(d.price * .75).toFixed(2) : 0, minStock: null, createdAt: Date.now() };
+      S.products.push(p); S.moves.push({ id: uid(), productId: p.id, type: 'restock', qty: q, delta: q, ts: Date.now(), source: 'scan' }); a++; }
+  });
+  save(); U.scan.image = null; U.scan.dets = []; toast(`✅ Inventory updated: ${a} new, ${u} updated`, 'ok'); go('stock');
+}
+
+/* =========================================================== VOICE */
+function listen() {
+  if (U.voice.listening) { try { rec.stop(); } catch (e) {} return; }
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) return toast('Voice not supported in this browser — type the command (Chrome / Safari work best)', 'warn', 5000);
+  if (!S.products.length) toast('Tip: add products first (Scan or Load demo)', 'warn');
+  rec = new SR(); rec.lang = set().lang; rec.interimResults = true; rec.continuous = false;
+  let fin = '';
+  rec.onresult = e => { let t = ''; for (let i = 0; i < e.results.length; i++) t += e.results[i][0].transcript; U.voice.transcript = t; const el = $('#trans'); if (el) { el.textContent = '“' + t + '”'; el.classList.remove('ph2'); } if (e.results[e.results.length - 1].isFinal) fin = t; };
+  rec.onerror = e => { if (!['no-speech', 'aborted'].includes(e.error)) toast('Mic error: ' + e.error + (e.error === 'not-allowed' ? ' — allow microphone access (HTTPS required)' : ''), 'err', 5000); };
+  rec.onend = () => { U.voice.listening = false; const t = fin || U.voice.transcript; render(); if (t) command(t, 'voice'); };
+  U.voice.transcript = ''; U.voice.parsed = null; U.voice.listening = true; render();
+  try { rec.start(); } catch (e) { U.voice.listening = false; render(); toast(e.message, 'err'); }
+}
+async function command(text, source) {
+  U.voice.transcript = text;
+  let P = Core.parseCommand(text, S.products);
+  if ((!P.items.length || P.items.some(i => !i.productId)) && set().apiKey && S.products.length) {
+    U.voice.busy = true; render();
+    try {
+      const r = await gemini([{ text: `You parse voice commands from a grocery shop owner (any language). Inventory product names: ${JSON.stringify(S.products.map(p => p.name))}.
+Command: "${text}"
+Return JSON {"intent":"sale"|"restock","items":[{"product": exact inventory name or null,"heard": what the owner said,"qty": number,"unit":"kg"|"g"|"L"|"ml"|"unit"|"pack"|"dozen"|null}]}. sold/vendí = sale; received/arrived/delivery/llegaron = restock.` }]);
+      const items = (r.items || []).map(it => { const p = S.products.find(x => x.name === it.product) || (it.product && Core.matchProduct(it.product, S.products).product); return { query: it.heard || it.product || '?', qty: +it.qty || 1, unit: it.unit || null, productId: p?.id || null }; });
+      if (items.length) P = { text, intent: r.intent === 'restock' ? 'restock' : 'sale', items };
+    } catch (e) { toast('AI parsing unavailable: ' + e.message, 'warn'); }
+    U.voice.busy = false;
+  }
+  if (!P.items.length) { render(); toast('I didn\'t catch a product. Try: “two bread sold”', 'warn'); speak('Sorry, I did not catch the product.'); return; }
+  P.source = source; U.voice.parsed = P;
+  if (set().autoApply && P.items.every(i => i.productId)) apply(); else render();
+}
+function apply() {
+  const P = U.voice.parsed; if (!P) return; const msgs = [], alerts = []; let total = 0;
+  P.items.filter(i => i.productId && +i.qty > 0).forEach(it => {
+    const p = prod(it.productId); if (!p) return; const q = +Core.convertQty(+it.qty, it.unit || null, p.unit).toFixed(3);
+    if (P.intent === 'sale') {
+      if (q > p.stock) alerts.push(`Only ${fq(p.stock, p.unit)} of ${p.name} was in stock — please recount.`);
+      const b = p.stock; p.stock = Math.max(0, +(p.stock - q).toFixed(3)); const t = +(q * p.price).toFixed(2); total += t;
+      S.moves.push({ id: uid(), productId: p.id, type: 'sale', qty: q, delta: +(p.stock - b).toFixed(3), unitPrice: p.price, total: t, ts: Date.now(), source: P.source, text: P.text });
+    } else { p.stock = +(p.stock + q).toFixed(3); S.moves.push({ id: uid(), productId: p.id, type: 'restock', qty: q, delta: q, ts: Date.now(), source: P.source, text: P.text }); }
+    msgs.push(`${fq(q, p.unit)} ${p.name}`);
+  });
+  if (!msgs.length) return toast('Choose a product first', 'warn');
+  if (P.intent === 'sale') { const rows = A().rows; P.items.forEach(it => { const r = rows.find(x => x.id === it.productId); if (r && (r.status === 'low' || r.status === 'out')) alerts.push(`${r.p.name} is ${r.status === 'out' ? 'out of stock' : 'running low'}: ${fq(r.p.stock, r.p.unit)} left. Reorder ${fq(r.reorderQty, r.p.unit)}.`); }); }
+  save(); U.voice.parsed = null; render();
+  const head = (P.intent === 'sale' ? 'Sold ' : 'Received ') + msgs.join(', ');
+  toast('✅ ' + head + (total ? ' · ' + money(total) : ''), 'ok');
+  [...new Set(alerts)].forEach((a, i) => setTimeout(() => toast('⚠️ ' + a, 'warn', 6500), 350 * (i + 1)));
+  speak(head + '. ' + [...new Set(alerts)].join(' '));
+}
+
+/* =========================================================== OTHER ACTIONS */
+async function advisor() {
+  U.ai.busy = true; U.ai.text = ''; render();
+  const a = A(), rows = a.rows;
+  if (set().apiKey) {
+    try {
+      const facts = rows.map(r => ({ product: r.p.name, unit: r.p.unit, stock: +r.p.stock.toFixed(2), avgDaily: +r.avgDaily.toFixed(2), qty7d: +r.qty7.toFixed(2), revenue7d: +r.rev7.toFixed(2), trendPct: Math.round(r.trend * 100), daysLeft: isFinite(r.daysLeft) ? +r.daysLeft.toFixed(1) : null, status: r.status, recommendedOrder: r.reorderQty }));
+      U.ai.text = await gemini([{ text: `You are the AI employee of the small grocery store "${set().storeName}". Currency ${set().currency}. Supplier lead time ${set().leadDays} days.
+Per-product data computed from real sales: ${JSON.stringify(facts)}
+Write a friendly briefing for the owner in ${set().lang.startsWith('es') ? 'Spanish' : 'English'} (max 140 words, plain text with emoji headers, no tables): 1) What's selling (top 3) 2) What's running out and exactly how much to reorder 3) Slow items + one action 4) One growth tip. Only use the numbers given.` }], false);
+      U.ai.busy = false; return render();
+    } catch (e) { toast('Gemini unavailable — using built-in analysis', 'warn'); }
+  }
+  const best = rows.filter(r => r.rev7 > 0).sort((x, y) => y.rev7 - x.rev7).slice(0, 3), low = rows.filter(r => r.status === 'low' || r.status === 'out').sort((x, y) => x.daysLeft - y.daysLeft).slice(0, 4), slow = rows.filter(r => r.status === 'slow').slice(0, 3);
+  const re = rows.filter(r => r.reorderQty > 0 && r.status !== 'slow');
+  U.ai.text = [
+    '📈 Selling: ' + (best.length ? best.map(r => `${r.p.name} (${money(r.rev7)} this week${r.trend > .1 ? ', trending up' : ''})`).join('; ') : 'no sales recorded yet') + '.',
+    '🚨 Running out: ' + (low.length ? low.map(r => `${r.p.name} — ${fq(r.p.stock, r.p.unit)} left (${daysTxt(r.daysLeft)}), order ${fq(r.reorderQty, r.p.unit)}`).join('; ') : 'nothing critical') + '.',
+    '🐢 Slow: ' + (slow.length ? slow.map(r => r.p.name).join(', ') + ' — pause reorders and try a bundle or small discount' : 'none') + '.',
+    `🛒 Next purchase: ${re.length} products, about ${money(re.reduce((s, r) => s + r.reorderCost, 0))}.`].join('\n\n');
+  U.ai.busy = false; render();
+}
+async function share() {
+  const rows = A().rows.filter(r => r.reorderQty > 0 && r.status !== 'slow').sort((x, y) => x.daysLeft - y.daysLeft); if (!rows.length) return;
+  const text = `🛒 ${set().storeName} — purchase order ${new Date().toLocaleDateString()}\n${rows.map(r => `• ${r.p.name}: ${fq(r.reorderQty, r.p.unit)}`).join('\n')}\nEst. total: ${money(rows.reduce((s, r) => s + r.reorderCost, 0))}`;
+  try { if (navigator.share) await navigator.share({ title: 'Purchase order', text }); else { await navigator.clipboard.writeText(text); toast('Order list copied — paste into WhatsApp or email', 'ok'); } }
+  catch (e) { if (e.name !== 'AbortError') prompt('Copy your order list:', text); }
+}
+function rng(s) { return () => { s |= 0; s = s + 0x6D2B79F5 | 0; let t = Math.imul(s ^ s >>> 15, 1 | s); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function demo() {
+  if (S.products.length && !confirm('Replace current data with the demo store?')) return;
+  const R = rng(42), now = Date.now(), P = [
+    ['Sugar', 'Pantry', 'kg', 9, 1.10, .80, 2.4, ['azucar', 'white sugar']], ['Rice', 'Grains', 'kg', 32, 1.40, 1.00, 2.8, ['arroz']],
+    ['Whole Milk 1L', 'Dairy', 'unit', 7, 1.25, .90, 4.6, ['milk', 'leche']], ['Bread loaf', 'Bakery', 'unit', 6, 2.00, 1.30, 5.2, ['bread', 'pan']],
+    ['Eggs 12-pack', 'Dairy', 'pack', 11, 3.20, 2.40, 1.6, ['eggs', 'huevos']], ['Cooking Oil 1L', 'Pantry', 'unit', 14, 3.50, 2.60, .9, ['oil', 'aceite']],
+    ['Coca-Cola 600ml', 'Beverages', 'unit', 40, 1.00, .65, 6.5, ['coke', 'coca cola', 'soda', 'coca']], ['Bananas', 'Fruits', 'kg', 3, .70, .40, 3.1, ['banana', 'banano']],
+    ['Tomatoes', 'Vegetables', 'kg', 7, 1.60, 1.10, 1.5, ['tomato', 'tomate']], ['Pasta 500g', 'Pantry', 'pack', 26, .90, .60, 1.2, ['pasta', 'spaghetti']],
+    ['Ground Coffee 250g', 'Pantry', 'pack', 10, 4.50, 3.20, .45, ['coffee', 'cafe']], ['Black Beans', 'Grains', 'kg', 16, 1.80, 1.30, 1.1, ['beans', 'frijoles']],
+    ['Bar Soap', 'Personal Care', 'unit', 34, .80, .50, .15, ['soap', 'jabon']], ['Salt 1kg', 'Pantry', 'unit', 22, .50, .30, .06, ['salt', 'sal']]];
+  S.products = []; S.moves = [];
+  P.forEach(([name, category, unit, stock, price, cost, rate, aliases], k) => {
+    const id = 'p' + k; S.products.push({ id, name, category, unit, stock, price, cost, aliases, minStock: null, createdAt: now - 22 * DAY });
+    for (let d = 21; d >= 0; d--) {
+      const day = new Date(now - d * DAY), wk = [0, 6].includes(day.getDay()) ? 1.35 : 1, ramp = name.startsWith('Coca') ? .7 + (21 - d) / 35 : 1;
+      let q = rate * wk * ramp * (.5 + R()); if (d === 0) q *= Math.min(1, (new Date().getHours() + 1) / 20);
+      const tx = Math.max(0, Math.round(q / (unit === 'kg' ? 1.5 : 2)));
+      for (let t = 0; t < tx; t++) {
+        const qq = unit === 'kg' ? Math.max(.25, Math.round(q / tx * 4) / 4) : Math.max(1, Math.round(q / tx));
+        const ts = new Date(day); ts.setHours(7 + Math.floor(R() * 12), Math.floor(R() * 60), 0, 0); if (ts.getTime() > now) continue;
+        S.moves.push({ id: uid(), productId: id, type: 'sale', qty: qq, delta: -qq, unitPrice: price, total: +(qq * price).toFixed(2), ts: ts.getTime(), source: 'demo' });
+      }
+    }
+  });
+  if (S.settings.storeName === DEF.storeName) S.settings.storeName = 'Abarrotes La Esquina';
+  U.ai.text = ''; save(); go('home'); toast('✨ Demo store loaded — 14 products, 3 weeks of sales', 'ok');
+}
+function quick(id, type) {
+  const p = prod(id), step = p.unit === 'g' || p.unit === 'ml' ? 100 : 1;
+  if (type === 'sale') { if (p.stock <= 0) return toast(p.name + ' is out of stock', 'warn'); const q = Math.min(step, p.stock); p.stock = +(p.stock - q).toFixed(3);
+    S.moves.push({ id: uid(), productId: id, type: 'sale', qty: q, delta: -q, unitPrice: p.price, total: +(q * p.price).toFixed(2), ts: Date.now(), source: 'manual' }); }
+  else { p.stock = +(p.stock + step).toFixed(3); S.moves.push({ id: uid(), productId: id, type: 'restock', qty: step, delta: step, ts: Date.now(), source: 'manual' }); }
+  save(); $('#stocklist').innerHTML = stockList();
+}
+function saveP() {
+  const e = U.edit, g = id => $('#' + id).value, name = g('e_name').trim(); if (!name) return toast('Name is required', 'warn');
+  const d = { name, aliases: g('e_alias').split(',').map(s => s.trim()).filter(Boolean), category: g('e_cat'), unit: g('e_unit'), stock: +g('e_stock') || 0, minStock: g('e_min') === '' ? null : +g('e_min'), price: +g('e_price') || 0, cost: +g('e_cost') || 0 };
+  if (e.id) { const p = prod(e.id), b = p.stock; Object.assign(p, d); if (b !== p.stock) S.moves.push({ id: uid(), productId: p.id, type: 'adjust', qty: +(p.stock - b).toFixed(3), delta: +(p.stock - b).toFixed(3), ts: Date.now(), source: 'edit' }); }
+  else S.products.push({ id: uid(), createdAt: Date.now(), ...d });
+  U.edit = null; save(); render(); toast('Saved', 'ok');
+}
+
+/* =========================================================== EVENTS */
+const ACT = {
+  tab: el => go(el.dataset.v), demo, share, advisor,
+  cam: startCam, camoff: () => { stopCam(); render(); }, capture, live: toggleLive, esp, rescan: () => { U.scan.image = null; U.scan.dets = []; render(); },
+  pick: el => $('#' + el.dataset.v).click(), commit: el => commit(el.dataset.v),
+  listen, typed: () => { const t = $('#typed').value.trim(); if (t) command(t, 'typed'); }, ex: el => command(el.dataset.v, 'typed'),
+  apply, cancelParse: () => { U.voice.parsed = null; render(); },
+  undo: el => { const m = S.moves.find(x => x.id === el.dataset.v); if (!m) return; const p = prod(m.productId); if (p) p.stock = Math.max(0, +(p.stock - (m.delta ?? (m.type === 'sale' ? -m.qty : m.qty))).toFixed(3)); S.moves = S.moves.filter(x => x !== m); save(); render(); toast('↩️ Undone'); },
+  cat: el => { U.inv.cat = el.dataset.v; render(); }, sort: el => { U.inv.sort = el.dataset.v; render(); }, qm: el => quick(el.dataset.v, el.dataset.t),
+  invCsv: () => {
+    const rows = A().rows.sort((a, b) => a.p.name.localeCompare(b.p.name));
+    const cell = x => `"${String(x ?? '').replace(/"/g, '""')}"`;
+    const csv = ['Name,Category,Unit,Stock,MinStock,Price,Cost,Value,Status']
+      .concat(rows.map(r => [r.p.name, r.p.category || 'Other', r.p.unit, r.p.stock, r.p.minStock ?? '', r.p.price, r.p.cost ?? '',
+        (Math.max(0, r.p.stock) * (r.p.cost || r.p.price * .75 || 0)).toFixed(2), r.status].map(cell).join(','))).join('\n');
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    a.download = `inventory-${new Date().toISOString().slice(0, 10)}.csv`; a.click();
+    toast('📊 Inventory CSV downloaded', 'ok');
+  },
+  adjustStock: () => {
+    const e = U.edit, p = e && prod(e.id); if (!p) return toast('Save the product first', 'warn');
+    const mode = $('#a_mode').value, q = +$('#a_qty').value, note = $('#a_note').value.trim();
+    if (!(q > 0)) return toast('Enter a quantity', 'warn');
+    if (mode === 'remove' && q > p.stock) return toast(`Only ${fq(p.stock, p.unit)} in stock`, 'warn');
+    const b = p.stock;
+    const ns = Math.max(0, +(mode === 'set' ? q : mode === 'add' ? b + q : b - q).toFixed(3));
+    const delta = +(ns - b).toFixed(3);
+    p.stock = ns; e.stock = ns;
+    S.moves.push({ id: uid(), productId: p.id, type: 'adjust', qty: Math.abs(delta), delta, ts: Date.now(), source: 'adjust', text: note || `${mode} ${q}` });
+    save(); $('#e_stock').value = ns; $('#a_qty').value = ''; $('#a_note').value = '';
+    $('#sheet').innerHTML = vSheet();
+    $('#stocklist').innerHTML = stockList();
+    toast(`✅ ${p.name}: ${delta >= 0 ? '+' : '−'}${fq(Math.abs(delta), p.unit)} — now ${fq(ns, p.unit)}`, 'ok');
+  },
+  edit: el => { const p = prod(el.dataset.v); U.edit = p ? { ...p } : { id: null, name: '', aliases: [], category: 'Pantry', unit: 'unit', stock: 0, minStock: null, price: 0, cost: 0 }; render(); },
+  closeSheet: (el, ev) => { if (ev.target.closest('[data-stop]') && el.classList.contains('sheetbg')) return; U.edit = null; render(); },
+  saveP, delP: () => { if (!confirm('Delete this product and its history?')) return; const id = U.edit.id; S.products = S.products.filter(p => p.id !== id); S.moves = S.moves.filter(m => m.productId !== id); U.edit = null; save(); render(); },
+  toggle: el => { S.settings[el.dataset.v] = !S.settings[el.dataset.v]; save(); el.classList.toggle('on'); },
+  showkey: el => { const k = $('#key'); k.type = k.type === 'password' ? 'text' : 'password'; el.textContent = k.type === 'password' ? 'Show' : 'Hide'; },
+  test: async () => { try { const r = await gemini([{ text: 'Reply with JSON {"ok":true}' }]); toast(r.ok ? '✅ Gemini connected' : 'Unexpected reply', r.ok ? 'ok' : 'warn'); } catch (e) { toast(e.message, 'err', 5000); } },
+  export: () => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify({ ...S, settings: { ...S.settings, apiKey: '' } }, null, 2)], { type: 'application/json' })); a.download = `shelfsense-${new Date().toISOString().slice(0, 10)}.json`; a.click(); },
+  reset: () => { if (confirm('Erase all products and sales on this device?')) { S.products = []; S.moves = []; U.ai.text = ''; save(); render(); toast('All data erased'); } }
+};
+document.addEventListener('click', ev => {
+  const el = ev.target.closest('[data-a]'); if (!el) return;
+  if (el.dataset.a === 'closeSheet' && el.classList.contains('sheetbg') && ev.target.closest('[data-stop]')) return;
+  const f = ACT[el.dataset.a]; if (f) { ev.preventDefault(); f(el, ev); }
+});
+document.addEventListener('input', ev => {
+  const t = ev.target;
+  if (t.id === 'q') { U.inv.q = t.value; $('#stocklist').innerHTML = stockList(); }
+  if (t.dataset.det !== undefined) { const d = U.scan.dets[+t.dataset.det], k = t.dataset.k; d[k] = t.type === 'checkbox' ? t.checked : (t.type === 'number' ? (t.value === '' ? null : +t.value) : t.value); }
+  if (t.dataset.pi !== undefined) { const it = U.voice.parsed.items[+t.dataset.pi]; it[t.dataset.k] = t.dataset.k === 'qty' ? +t.value : (t.value || null); }
+});
+document.addEventListener('change', ev => {
+  const t = ev.target;
+  if (t.dataset.set) { const k = t.dataset.set; S.settings[k] = t.type === 'number' ? (+t.value || 0) : t.value.trim(); save();
+    $('#storeName').textContent = set().storeName; const pill = $('#enginePill'); pill.className = 'pill ' + (set().apiKey ? '' : 'off'); pill.innerHTML = `<i></i>${set().apiKey ? 'Gemini AI' : 'On-device'}`; }
+  if (t.dataset.det !== undefined) { const d = U.scan.dets[+t.dataset.det];
+    if (t.dataset.k === 'name') { const m = Core.matchProduct(d.name, S.products); d.matchId = m.product?.id || null; if (m.product && !d.price) d.price = m.product.price; render(); }
+    else if (t.dataset.k === 'include') render(); }
+  if (t.dataset.pk) { U.voice.parsed.intent = t.value; render(); }
+  if (t.id === 'photoIn') { const fs = [...t.files].slice(0, 6); t.value = ''; if (fs.length) Promise.all(fs.map(f => fileToURL(f).then(d => resize(d)))).then(analyze).catch(e => toast(e.message, 'err')); }
+  if (t.id === 'videoIn') { const f = t.files[0]; t.value = ''; if (!f) return; U.scan.busy = true; U.scan.status = 'Extracting frames from video…'; render(); frames(f, 5).then(fr => { U.scan.busy = false; analyze(fr); }).catch(e => { U.scan.busy = false; render(); toast(e.message, 'err'); }); }
+  if (t.id === 'importIn') { const f = t.files[0]; t.value = ''; if (!f) return; f.text().then(x => { const d = JSON.parse(x); S.products = d.products || []; S.moves = d.moves || []; if (d.settings) Object.assign(S.settings, { ...d.settings, apiKey: S.settings.apiKey }); save(); render(); toast('Imported', 'ok'); }).catch(() => toast('Invalid file', 'err')); }
+});
+document.addEventListener('keydown', ev => { if (ev.key === 'Enter' && ev.target.id === 'typed') ACT.typed(); if (ev.key === 'Escape' && U.edit) { U.edit = null; render(); } });
+
+/* ---------- firebase cloud sync (AI Builder Cup: deployed on Firebase) ----
+   Anonymous auth + one Firestore doc per device-user. Newest state wins on
+   boot (savedAt); afterwards every save() mirrors to the cloud (debounced)
+   and remote writes that are NEWER than local apply live — multi-device
+   sync for free. No config / no network = the app stays local-only. */
+window.__cloudPut = null;
+(function cloud() {
+  const FB = window.__firebase, cfg = window.FIREBASE_CONFIG || {};
+  const pillEl = $('#cloudPill');
+  const setPill = (on, label) => { pillEl.style.display = ''; pillEl.className = 'pill ' + (on ? '' : 'off'); pillEl.innerHTML = '<i></i>' + label; };
+  if (!FB || !cfg.apiKey) return; // local-only mode: pill stays hidden
+  let timer = null, uid = null, applying = false;
+  const push = () => {
+    if (!uid) return;
+    clearTimeout(timer);
+    timer = setTimeout(() => setDoc(FB.doc(FB.getFirestore(app), 'users', uid), JSON.parse(JSON.stringify(S))).catch(() => setPill(false, 'Cloud offline')), 1200);
+  };
+  window.__cloudPut = push;
+  let app;
+  try { app = FB.initializeApp(cfg); } catch (e) { return; }
+  const db = FB.getFirestore(app);
+  setPill(false, 'Connecting…');
+  FB.signInAnonymously(FB.getAuth(app)).catch(() => setPill(false, 'Local'));
+  FB.onAuthStateChanged(FB.getAuth(app), async (u) => {
+    if (!u) { uid = null; setPill(false, 'Local'); return; }
+    uid = u.uid;
+    const ref = FB.doc(db, 'users', uid);
+    try {
+      const snap = await FB.getDoc(ref);
+      if (snap.exists() && (snap.data().savedAt || 0) > (S.savedAt || 0)) {
+        const d = snap.data();
+        S.products = d.products || []; S.moves = d.moves || [];
+        S.settings = Object.assign({}, DEF, d.settings || {});
+        save(); render();
+        toast('☁️ Loaded newer data from the cloud', 'ok');
+      }
+      setPill(true, 'Cloud');
+      // live sync: a remote write newer than local applies (our own echoes
+      // are older-or-equal and skipped)
+      FB.onSnapshot(ref, (doc2) => {
+        if (!doc2.exists() || applying) return;
+        const d = doc2.data();
+        if ((d.savedAt || 0) > (S.savedAt || 0)) {
+          applying = true;
+          S.products = d.products || []; S.moves = d.moves || [];
+          S.settings = Object.assign({}, DEF, d.settings || {});
+          save(); render(); applying = false;
+        }
+      });
+    } catch (e) { setPill(false, 'Cloud offline'); }
+  });
+})();
+
+/* boot */
+$('#logo').innerHTML = I.logo;
+document.querySelectorAll('.nav button').forEach(b => { const ic = { home: I.home, scan: I.scan, sell: I.mic, stock: I.box, settings: I.gear }[b.dataset.v]; b.insertAdjacentHTML('afterbegin', b.dataset.v === 'sell' ? `<span class="fabm">${ic}</span>` : ic); });
+render();
+setInterval(() => { if (U.tab === 'home' && !U.edit && !U.ai.busy && document.visibilityState === 'visible' && !document.activeElement?.matches('input,select')) render(); }, 60000);
+})();
+</script>
+</body></html>
