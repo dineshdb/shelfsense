@@ -376,7 +376,7 @@ function vSetup() {
         <input class="f" id="su_url" placeholder="http://localhost:8080" value="${esc(set().aiBaseUrl)}">
         <label class="lb" style="margin-top:10px">Model name</label>
         <input class="f" id="su_model" value="${esc(set().aiModel)}">
-        <div class="muted small mt">Point at your merve gateway: <code>http://localhost:8283</code> with model <code>gemma-4-e4b</code> — or any OpenAI-compatible server. Fully offline AI.</div>`}
+        <div class="muted small mt">Point at your merve gateway: <code>http://localhost:8283</code> with model <code>gemma-4-e4b</code> — or any OpenAI-compatible server. Fully offline AI. Blocked by the browser? Open <code>http://localhost:8283</code> directly — that port serves this app <i>and</i> the AI on one origin.</div>`}
       <div class="g2 mt2"><button class="btn pri" data-a="setupTest" ${st.busy ? 'disabled' : ''}>${st.busy ? 'Testing…' : 'Test & continue'}</button>
         <button class="btn ghost" data-a="setupSkip">Skip — on-device only</button></div>
       ${st.msg ? `<div class="muted small mt" style="color:var(--bad)">${esc(st.msg)}</div>` : ''}
@@ -557,7 +557,7 @@ function vSettings() {
     <div class="mt" style="border-top:1px solid var(--line);padding-top:12px">
       <label class="lb">Local server base URL</label>${inp('aiBaseUrl', 'text', 'placeholder="http://localhost:8080"')}
       <div class="g2"><div><label class="lb">Local model</label>${inp('aiModel')}</div><div></div></div>
-      <div class="muted small mt">For all AI features on YOUR machine: your merve gateway (<code>http://localhost:8283/v1</code>, model <code>gemma-4-e4b</code>) or any OpenAI-compatible server. It must allow this origin (llama.cpp does; ollama needs OLLAMA_ORIGINS=*).</div>
+      <div class="muted small mt">For all AI features on YOUR machine: your merve gateway (<code>http://localhost:8283/v1</code>, model <code>gemma-4-e4b</code>) or any OpenAI-compatible server. Tip: open <code>http://localhost:8283</code> itself — it serves this app next to the AI, same origin, so no browser permission is needed (llama.cpp + CORS shim does the rest; ollama needs OLLAMA_ORIGINS=*).</div>
     </div>
     <button class="btn sec w mt" data-a="test">🔌 Test AI connection</button>
 </div>
@@ -737,14 +737,15 @@ async function command(text, source) {
     try {
       const r = await gemini([{ text: `You parse voice commands from a grocery shop owner. The command may be in English, Spanish, Hindi (हिन्दी) or Nepali (नेपाली) — including Devanagari script, Devanagari digits (०१२३४५६७८९), and romanized words (chini, bhaat, chamal, chiya, nun, tel, dal). Half = 0.5, quarter = 0.25, "एक पाउ" ≈ 0.5 kg, "आधा किलो" = 0.5 kg, "पाउ" ≈ 0.55 kg if unsure use 0.5. Inventory product names: ${JSON.stringify(S.products.map(p => p.name))}.
 Command: "${text}"
-Return JSON {"intent":"sale"|"restock","items":[{"product": exact inventory name or null (match by meaning across languages: चिनी/cheeni→Sugar, चामल/भात/chamal/bhaat→Rice, चिया→Tea, नुन→Salt, तेल→oil, दाल→lentils),"heard": the owner's words for that item, in the original language,"qty": number,"unit":"kg"|"g"|"L"|"ml"|"unit"|"pack"|"dozen"|null}]}. sold/bikri/bikri bhayo/becha/vendí/बिक्री/बेचा = sale; received/arrived/delivery/llegaron/आयो/आए/पसलमा आयो/मंगाएको/खरिद = restock.` }]);
-      const items = (r.items || []).map(it => { const p = S.products.find(x => x.name === it.product) || (it.product && Core.matchProduct(it.product, S.products).product); return { query: it.heard || it.product || '?', qty: +it.qty || 1, unit: it.unit || null, productId: p?.id || null }; });
-      if (items.length) P = { text, intent: r.intent === 'restock' ? 'restock' : 'sale', items };
+Return JSON {"items":[{"intent":"sale"|"restock","product": exact inventory name or null (match by meaning across languages: चिनी/cheeni→Sugar, चामल/भात/chamal/bhaat→Rice, चिया→Tea, नुन→Salt, तेल→oil, दाल→lentils),"heard": the owner's words for that item, in the original language,"qty": number,"unit":"kg"|"g"|"L"|"ml"|"unit"|"pack"|"dozen"|null}]} — one entry PER item mentioned, each with ITS OWN intent, because one command can mix them ("rice sold and eggs arrived"). sold/bikri/bikri bhayo/becha/vendí/बिक्री/बेचा = sale; received/arrived/delivery/llegaron/आयो/आए/पसलमा आयो/मंगाएको/खरिद = restock.` }]);
+      const defIntent = r.intent === 'restock' ? 'restock' : 'sale';
+      const items = (r.items || []).map(it => { const p = S.products.find(x => x.name === it.product) || (it.product && Core.matchProduct(it.product, S.products).product); return { intent: it.intent === 'restock' ? 'restock' : it.intent === 'sale' ? 'sale' : defIntent, query: it.heard || it.product || '?', qty: +it.qty || 1, unit: it.unit || null, productId: p?.id || null }; });
+      if (items.length) P = { text, intent: defIntent, items };
     } catch (e) { toast('AI parsing unavailable: ' + e.message, 'warn'); }
     U.voice.busy = false;
   }
   if (!P.items.length) { render(); toast('I didn\'t catch a product. Try: “two bread sold”', 'warn'); speak('Sorry, I did not catch the product.'); return; }
-  P.items.forEach(it => U.voice.bill.push({ id: uid(), text, intent: P.intent, query: it.query, qty: it.qty, unit: it.unit, productId: it.productId, include: true, source }));
+  P.items.forEach(it => U.voice.bill.push({ id: uid(), text, intent: it.intent || P.intent, query: it.query, qty: it.qty, unit: it.unit, productId: it.productId, include: true, source }));
   render();
   toast('🧾 ' + P.items.length + ' line' + (P.items.length > 1 ? 's' : '') + ' on the bill', 'ok', 2200);
   speak(P.items.length === 1 ? 'One item on the bill.' : P.items.length + ' items on the bill.');
@@ -894,7 +895,15 @@ const ACT = {
       if (!r || !r.ok) throw new Error('unexpected reply from the backend');
       set().setupDone = true; st.busy = false; save(); render();
       toast(`✅ ${aiLabel()} connected — welcome aboard`, 'ok');
-    } catch (e) { st.busy = false; st.msg = e.message || String(e); render(); }
+    } catch (e) {
+      st.busy = false;
+      const m = e.message || String(e);
+      st.msg = /HTTP 405/.test(m) ? 'That port is a raw gateway without CORS (405). Use the shim: http://localhost:8283'
+        : /HTTP 404/.test(m) ? 'No OpenAI-compatible endpoint there — check the URL'
+        : /fetch/i.test(m) || /net::|NetworkError|Load failed/i.test(m) ? 'The browser blocked the call to your local server. Easiest fix: open http://localhost:8283 — it serves this app AND the AI on one origin.'
+        : m;
+      render();
+    }
   },
   cat: el => { U.inv.cat = el.dataset.v; render(); }, sort: el => { U.inv.sort = el.dataset.v; render(); }, qm: el => quick(el.dataset.v, el.dataset.t),
   invCsv: () => {

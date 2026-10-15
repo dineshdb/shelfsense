@@ -6,9 +6,13 @@ Commerce): **shelf scanning** (Gemini Vision / on-device COCO-SSD),
 items), **AI reorder forecasting**, an **AI business advisor**, and full
 **inventory management** — as one client-rendered page on Firebase.
 
-Speaks English, Spanish and more; product names match by alias (chini →
-Sugar, bhat → Rice). Every model answer is validated before it touches
-stock; every stock change is an auditable ledger entry.
+Speaks English, Spanish, Hindi (हिन्दी) and Nepali (नेपाली) — Devanagari
+script, Devanagari digits and romanized words all parse, and product
+names match by meaning across languages (chini → Sugar, चामल → Rice,
+अन्डा → Eggs). One sentence can mix intents ("5 kg rice sold and 12 eggs
+arrived") — each bill line keeps its own Sold/Received. Every model
+answer is validated before it touches stock; every stock change is an
+auditable ledger entry.
 
 ## The AI backend — yours to pick, first run
 
@@ -26,6 +30,24 @@ parsing and the business advisor all follow the setting — and it's
 swappable anytime in Settings. Skippable entirely: on-device COCO-SSD
 detection and a deterministic parser keep the store working with no AI at
 all. Gemma keeps the cup's "Gemini or Gemma" rule honest either way.
+
+### The one-port local mode (recommended for local Gemma)
+
+`local/merve-cors-proxy.mjs` is a tiny node shim (launchd plist included)
+that serves **the app and the AI on one origin**:
+
+    node local/merve-cors-proxy.mjs    # http://localhost:8283
+
+`/v1/*` forwards to a merve gateway (`127.0.0.1:8282`) with the CORS +
+Private-Network headers browsers demand; everything else serves `dist/`.
+Open `http://localhost:8283`, pick Local Gemma, base URL
+`http://localhost:8283` — same origin as the AI, so no browser
+(Firefox's Local Network Access, Chrome's PNA) can block the call. The
+public https site + `http://localhost:8283` also works in Chrome-family
+browsers; Firefox users should use the one-port mode (Firefox blocks
+public→localhost calls outright). Thinking models are handled too: if a
+server reasons before answering, the JSON is recovered from its
+reasoning trace.
 
 ## Design
 
