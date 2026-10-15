@@ -16,36 +16,64 @@ say() { printf '\n=== %s\n' "$*"; }
 # provisioning calls the CLI has no non-interactive surface for)
 FB_JSON="$HOME/.config/configstore/firebase-tools.json"
 [ -f "$FB_JSON" ] || { echo "no firebase-tools session at $FB_JSON — run: npx firebase-tools login"; exit 2; }
-CLIENT_ID=$(grep -rhoE '"[0-9]{12}-[a-z0-9]+\.apps\.googleusercontent\.com"' node_modules/firebase-tools/lib 2>/dev/null | head -1 | tr -d '"')
-CLIENT_SECRET=$(grep -rhoE 'clientSecret ?= ?"[^"]+"' node_modules/firebase-tools/lib 2>/dev/null | head -1 | sed -E 's/.*"([^"]+)"$/\1/')
+# The CLI's own public OAuth client (shipped in the firebase-tools npm bundle;
+# the constants it itself uses). Scrape the bundle, fall back to the known
+# public values, env-overridable like the CLI's own FIREBASE_CLIENT_*.
+FB_LIB=""
+for cand in node_modules/firebase-tools/lib "$HOME"/.npm/_npx/*/node_modules/firebase-tools/lib; do
+  if [ -d "$cand" ]; then FB_LIB="$cand"; break; fi
+done
+CLIENT_ID=$( (grep -rhoE '"[0-9]{12}-[a-z0-9]+\.apps\.googleusercontent\.com"' "$FB_LIB" 2>/dev/null | head -1 | tr -d '"') || true)
+CLIENT_SECRET=$( (grep -rhoE 'FIREBASE_CLIENT_SECRET", "[^"]+"' "$FB_LIB" 2>/dev/null | head -1 | sed -E 's/.*"([^"]+)"$/\1/') || true)
+CLIENT_ID="${FIREBASE_CLIENT_ID:-${CLIENT_ID:-563584335869-fgrhgmd47bqnekij5i8b5pr03ho849e6.apps.googleusercontent.com}}"
+CLIENT_SECRET="${FIREBASE_CLIENT_SECRET:-${CLIENT_SECRET:-j9iVZfS8kkCEFUPaAeJV0sAi}}"
 REFRESH=$(python3 - "$FB_JSON" <<'EOF'
 import json, os, sys
 d = json.load(open(sys.argv[1]))
-u = d.get("user") or {}
-t = u.get("tokens") or u
+t = d.get("tokens") or (d.get("user") or {}).get("tokens") or (d.get("user") or {})
 print(t.get("refresh_token") or t.get("refreshToken") or "")
 EOF
 )
 [ -n "${REFRESH:-}" ] || { echo "no refresh token in session — run: npx firebase-tools login"; exit 2; }
-[ -n "${CLIENT_ID:-}" ] && [ -n "${CLIENT_SECRET:-}" ] || { echo "could not scrape firebase-tools OAuth client from node_modules"; exit 2; }
+[ -n "${CLIENT_ID:-}" ] && [ -n "${CLIENT_SECRET:-}" ] || { echo "no OAuth client — set FIREBASE_CLIENT_ID / FIREBASE_CLIENT_SECRET"; exit 2; }
 
 refresh_access() {
-  $CURL -X POST https://oauth2.googleapis.com/token \
+  local resp
+  resp=$(curl -sS -X POST https://oauth2.googleapis.com/token \
     -d client_id="$CLIENT_ID" -d client_secret="$CLIENT_SECRET" \
-    -d refresh_token="$REFRESH" -d grant_type=refresh_token \
-    | python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])'
+    -d refresh_token="$REFRESH" -d grant_type=refresh_token) || true
+  echo "$resp" | python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])' \
+    || { echo "token exchange failed: $resp" >&2; return 1; }
 }
 ACCESS=$(refresh_access)
-authed() { "$CURL" -H "Authorization: Bearer $ACCESS" -H "content-type: application/json" "$@"; }
+authed() { curl -sS --fail-with-body -H "Authorization: Bearer $ACCESS" -H "content-type: application/json" "$@"; }
 
 # ---- 1. project
-PID=$(python3 -c "import json;print(json.load(open('.firebaserc'))['projects']['default'])" 2>/dev/null || echo YOUR_PROJECT_ID)
-have_pid=false
-if [ "$PID" != "YOUR_PROJECT_ID" ]; then
-  state=$(authed "https://firebase.googleapis.com/v1beta1/projects/$PID" 2>/dev/null | python3 -c 'import json,sys
+PID=$(python3 -c "import json;print(json.load(open('.firebaserc'))['projects']['default'])" 2>/dev/null || echo "")
+if [ "$PID" = "YOUR_PROJECT_ID" ]; then
+  # an invalid active-project placeholder makes every firebase CLI call fail
+  # ("Invalid project id: YOUR_PROJECT_ID") — park it until the real id lands
+  mv .firebaserc .firebaserc.placeholder
+  PID=""
+fi
+project_state() { authed "https://cloudresourcemanager.googleapis.com/v1/projects/$1" 2>/dev/null | python3 -c 'import json,sys
 try: print(json.load(sys.stdin).get("lifecycleState",""))
+except Exception: print("")' || true; }
+have_pid=false
+if [ -n "$PID" ]; then
+  [ "$(project_state "$PID")" = "ACTIVE" ] && have_pid=true
+fi
+# no rcfile (first run crashed midway)? reuse an existing shelfsense-* project
+if [ "$have_pid" = false ] && [ -n "${SHELFSENCE_PID:-}" ]; then
+  PID="$SHELFSENCE_PID"; have_pid=true
+fi
+if [ "$have_pid" = false ] && [ -z "$PID" ]; then
+  PID=$(authed "https://cloudresourcemanager.googleapis.com/v1/projects" 2>/dev/null | python3 -c 'import json,sys
+try:
+    ps = [p["projectId"] for p in json.load(sys.stdin).get("projects", []) if p["projectId"].startswith("shelfsense-") and p.get("lifecycleState") == "ACTIVE"]
+    print(ps[-1] if ps else "")
 except Exception: print("")' || true)
-  [ "$state" = "ACTIVE" ] && have_pid=true
+  [ -n "$PID" ] && have_pid=true && say "reusing existing project $PID"
 fi
 if [ "$have_pid" = false ]; then
   PID="${SHELFSENCE_PID:-shelfsense-$(openssl rand -hex 3)}"
@@ -61,44 +89,59 @@ if [ "$have_pid" = false ]; then
   done
   say "waiting for project $PID to be ACTIVE"
   for i in $(seq 1 45); do
-    state=$(authed "https://firebase.googleapis.com/v1beta1/projects/$PID" 2>/dev/null | python3 -c 'import json,sys
-try: print(json.load(sys.stdin).get("lifecycleState",""))
-except Exception: print("")' || true)
-    [ "$state" = "ACTIVE" ] && break
-    [ "$i" = 45 ] && { echo "project never became ACTIVE (last: $state)"; exit 1; }
+    [ "$(project_state "$PID")" = "ACTIVE" ] && break
+    [ "$i" = 45 ] && { echo "project never became ACTIVE"; exit 1; }
     sleep 4
   done
 fi
 say "project: $PID"
 
-# ---- 2. anonymous auth on (Identity Toolkit admin)
+# ---- 2. anonymous sign-in on. First-time activation on a Spark (free)
+# project has NO public API (initializeAuth hard-requires billing) — best
+# effort here, with an honest console pointer when the API refuses.
 say "enabling anonymous sign-in"
-authed -X PATCH "https://identitytoolkit.googleapis.com/admin/v2/projects/$PID/config?updateMask=signIn.anonymous.enabled" \
-  -d '{"signIn":{"anonymous":{"enabled":true}}}' | python3 -c 'import json,sys; d=json.load(sys.stdin); print("anonymous:", d.get("signIn",{}).get("anonymous",{}).get("enabled"))'
+authed -X POST "https://identitytoolkit.googleapis.com/admin/v2/projects/$PID/identityPlatform:initializeAuth" \
+  -H "x-goog-user-project: $PID" -d '{}' >/dev/null 2>&1 || true
+ANON=$(authed -X PATCH "https://identitytoolkit.googleapis.com/admin/v2/projects/$PID/config?updateMask=signIn.anonymous.enabled" \
+  -H "x-goog-user-project: $PID" -d '{"signIn":{"anonymous":{"enabled":true}}}' 2>/dev/null | python3 -c 'import json,sys
+try: print(json.load(sys.stdin).get("signIn",{}).get("anonymous",{}).get("enabled"))
+except Exception: print("")' || echo "")
+if [ "$ANON" = "True" ]; then
+  echo "anonymous: enabled"
+else
+  echo "  NOTE: anonymous sign-in could NOT be enabled via API (free projects gate it)."
+  echo "  ONE console click needed: https://console.firebase.google.com/project/$PID/authentication"
+  echo "        (Authentication → Get started → Anonymous → Enable)"
+fi
 
-# ---- 3. web app + its SDK config
+# ---- 3. web app + its SDK config (reuse an existing web app if present)
 say "registering web app + minting SDK config"
-APPJSON=$(authed -X POST "https://firebase.googleapis.com/v1beta1/projects/$PID/webApps" -d '{"displayName":"ShelfSense AI"}')
-CFG=$(echo "$APPJSON" | python3 -c '
-import json, sys
-d = json.load(sys.stdin)
-c = d.get("config") or {}
-need = ["apiKey","authDomain","projectId","storageBucket","messagingSenderId","appId"]
-missing = [k for k in need if not c.get(k)]
-if missing:
-    print("MISSING:" + ",".join(missing)); sys.exit(1)
-print(json.dumps(c))')
-if echo "$CFG" | grep -q '^MISSING:'; then
-  say "config not in create response — reading it back"
-  APPID=$(echo "$APPJSON" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("appId",""))')
-  CFG=$(authed "https://firebase.googleapis.com/v1beta1/projects/$PID/webApps/$APPID/config" | python3 -c '
+APPID=$(authed "https://firebase.googleapis.com/v1beta1/projects/$PID/webApps" 2>/dev/null | python3 -c 'import json,sys
+try:
+    web = [a for a in json.load(sys.stdin).get("apps", []) if ":web:" in a.get("appId", "")]
+    print(web[0]["appId"] if web else "")
+except Exception: print("")' || echo "")
+if [ -z "$APPID" ]; then
+  OPNAME=$(authed -X POST "https://firebase.googleapis.com/v1beta1/projects/$PID/webApps" -d '{"displayName":"ShelfSense AI"}' \
+    | python3 -c 'import json,sys; print(json.load(sys.stdin).get("name",""))')
+  for i in $(seq 1 15); do
+    APPID=$(authed "https://firebase.googleapis.com/v1beta1/$OPNAME" 2>/dev/null | python3 -c 'import json,sys
+try: print((json.load(sys.stdin).get("response") or {}).get("appId",""))
+except Exception: print("")' || echo "")
+    [ -n "$APPID" ] && break
+    sleep 2
+  done
+fi
+[ -n "$APPID" ] || { echo "could not obtain a web app id"; exit 1; }
+echo "web app: $APPID"
+sleep 3
+CFG=$(authed "https://firebase.googleapis.com/v1beta1/projects/$PID/webApps/$APPID/config" | python3 -c '
 import json, sys
 c = json.load(sys.stdin)
 need = ["apiKey","authDomain","projectId","storageBucket","messagingSenderId","appId"]
 missing = [k for k in need if not c.get(k)]
 if missing: sys.exit("missing " + ",".join(missing))
 print(json.dumps(c))')
-fi
 echo "config: $CFG"
 python3 - "$CFG" <<'EOF'
 import json, re, sys
