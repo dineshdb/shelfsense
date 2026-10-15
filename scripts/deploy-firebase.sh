@@ -5,7 +5,7 @@
 # Idempotent: re-runs skip finished steps. Override the project with
 # SHELFSENCE_PID=<id> ./scripts/deploy-firebase.sh
 set -euo pipefail
-REPO="$(cd "$(dirname "$0")/.." && pwd)"
+REPO="$(cd "$(dirname "$0")/.." >/dev/null 2>&1 && pwd)"
 cd "$REPO"
 FB=(npx -y firebase-tools)
 CURL="curl -sS --fail-with-body"

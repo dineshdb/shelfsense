@@ -344,7 +344,9 @@ async function aiCustom(parts, json = true) {
   });
   if (!r.ok) throw new Error('local AI HTTP ' + r.status + ': ' + (await r.text()).slice(0, 150));
   const d = await r.json();
-  const t = ((d.choices || [])[0]?.message?.content ?? '').trim();
+  const m0 = (d.choices || [])[0]?.message || {};
+  let t = (m0.content ?? '').trim();
+  if (!t && m0.reasoning_content) t = (m0.reasoning_content.match(/\{[\s\S]*\}/) || [''])[0].trim();
   if (!t) throw new Error('local AI returned no content');
   return json ? JSON.parse(t.replace(/```json|```/g, '').trim()) : t;
 }
