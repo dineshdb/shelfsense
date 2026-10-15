@@ -222,7 +222,7 @@ const CAT = { Produce: '🥬', Fruits: '🍌', Vegetables: '🥕', Dairy: '🥛'
 const NAME_EMOJI = [[/sugar|azucar/, '🍬'], [/rice|arroz/, '🍚'], [/milk|leche/, '🥛'], [/bread|\bpan\b/, '🍞'], [/egg|huevo/, '🥚'], [/oil|aceite/, '🫗'], [/cola|coke|soda/, '🥤'], [/banana|banano/, '🍌'], [/tomato|tomate/, '🍅'], [/pasta|spaghetti/, '🍝'], [/coffee|cafe/, '☕'], [/soap|jabon/, '🧼'], [/salt|\bsal\b/, '🧂'], [/bean|frijol/, '🫘'], [/apple|manzana/, '🍎'], [/orange|naranja/, '🍊'], [/water|agua/, '💧'], [/cheese|queso/, '🧀'], [/chicken|pollo/, '🍗'], [/carrot|zanahoria/, '🥕'], [/broccoli/, '🥦'], [/beer|cerveza/, '🍺'], [/chip|snack/, '🍟']];
 const COCO = { bottle: ['Bottled drink', 'Beverages'], banana: ['Bananas', 'Fruits'], apple: ['Apples', 'Fruits'], orange: ['Oranges', 'Fruits'], broccoli: ['Broccoli', 'Vegetables'], carrot: ['Carrots', 'Vegetables'], sandwich: ['Sandwich', 'Bakery'], donut: ['Donuts', 'Bakery'], cake: ['Cake', 'Bakery'], cup: ['Cup', 'Household'], bowl: ['Bowl', 'Household'], book: ['Notebook', 'Other'], scissors: ['Scissors', 'Household'], toothbrush: ['Toothbrush', 'Personal Care'] };
 const UNITS = ['unit', 'kg', 'g', 'L', 'ml', 'pack'];
-const DEF = { storeName: 'My Grocery Store', currency: '$', apiKey: '', model: 'gemini-2.5-flash', engine: 'auto', lang: 'en-US', autoApply: true, speak: true, leadDays: 3, coverDays: 7, safetyDays: 2, windowDays: 28, espUrl: 'http://192.168.1.50/capture' };
+const DEF = { storeName: 'My Grocery Store', currency: '$', apiKey: '', model: 'gemini-2.5-flash', aiMode: 'gemini', aiBaseUrl: '', aiModel: 'gemma-4-e4a', setupDone: false, engine: 'auto', lang: 'en-US', autoApply: true, speak: true, leadDays: 3, coverDays: 7, safetyDays: 2, windowDays: 28, espUrl: 'http://192.168.1.50/capture' };
 const I = {
   logo: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h2l2.4 11.2a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 2-1.5L21 8H6.2"/><circle cx="10" cy="20.5" r="1.3"/><circle cx="17" cy="20.5" r="1.3"/><path d="M12 8.5l1 2 2 .4-1.5 1.4.4 2-1.9-1-1.9 1 .4-2-1.5-1.4 2-.4z" fill="currentColor" stroke="none"/></svg>',
   home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg>',
@@ -239,7 +239,7 @@ const I = {
 let saved = {}; try { saved = JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) {}
 const S = { products: saved.products || [], moves: saved.moves || [], settings: Object.assign({}, DEF, saved.settings || {}) };
 const U = { tab: 'home', scan: { image: null, dets: [], busy: false, status: '', camOn: false, live: false, engine: '' },
-  voice: { listening: false, transcript: '', parsed: null, busy: false }, inv: { q: '', cat: 'All', sort: 'name' }, ai: { busy: false, text: '' }, edit: null };
+  voice: { listening: false, transcript: '', parsed: null, busy: false }, inv: { q: '', cat: 'All', sort: 'name' }, ai: { busy: false, text: '' }, setup: { mode: 'gemini', busy: false, msg: '' }, edit: null };
 let stream = null, coco = null, liveTimer = null, rec = null;
 const save = () => {
   S.savedAt = Date.now();
@@ -286,9 +286,38 @@ function drawBoxes(cv, w, h, dets) {
 }
 const A = () => Core.analyze(S.products, S.moves, set());
 
-/* ---------- Gemini ---------- */
+/* ---------- the AI backend: swappable ------------------------------------
+   Two doors, one function:
+   - 'gemini' (default): Google's Generative Language API with an API key.
+   - 'custom': any local OpenAI-compatible server (llama.cpp / ollama /
+     LM Studio / vLLM) running e.g. Gemma locally — base URL + model name
+     in Settings. Same prompts, images ride as data URLs, JSON asked in
+     prompt (local servers vary on response_format). Gemma keeps the app
+     AI Builder Cup eligible (Gemini OR Gemma). */
+const aiReady = () => (set().aiMode === 'custom' && set().aiBaseUrl) || !!set().apiKey;
+const aiLabel = () => set().aiMode === 'custom' && set().aiBaseUrl ? `Local ${set().aiModel}` : 'Gemini AI';
+async function aiCustom(parts, json = true) {
+  const base = set().aiBaseUrl.replace(/\/+$/, '');
+  const content = [];
+  let text = '';
+  for (const p of parts) {
+    if (p && p.inline_data) content.push({ type: 'image_url', image_url: { url: `data:${p.inline_data.mime_type};base64,${p.inline_data.data}` } });
+    else text += (p && p.text || String(p ?? '')) + '\n';
+  }
+  content.unshift({ type: 'text', text: text.trim() + (json ? '\nAnswer ONLY with JSON. No prose, no code fences.' : '') });
+  const r = await fetch(base + '/v1/chat/completions', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: set().aiModel, temperature: json ? 0.2 : 0.5, messages: [{ role: 'user', content }] }),
+  });
+  if (!r.ok) throw new Error('local AI HTTP ' + r.status + ': ' + (await r.text()).slice(0, 150));
+  const d = await r.json();
+  const t = ((d.choices || [])[0]?.message?.content ?? '').trim();
+  if (!t) throw new Error('local AI returned no content');
+  return json ? JSON.parse(t.replace(/```json|```/g, '').trim()) : t;
+}
 async function gemini(parts, json = true) {
-  if (!set().apiKey) throw new Error('No Gemini API key');
+  if (set().aiMode === 'custom' && set().aiBaseUrl) return aiCustom(parts, json);
+  if (!set().apiKey) throw new Error('No AI backend configured');
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(set().model)}:generateContent?key=${encodeURIComponent(set().apiKey)}`;
   const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ role: 'user', parts }], generationConfig: json ? { responseMimeType: 'application/json', temperature: .2 } : { temperature: .5 } }) });
   if (!r.ok) { let m = 'HTTP ' + r.status; try { m = (await r.json()).error.message; } catch (e) {} throw new Error('Gemini: ' + m); }
@@ -297,6 +326,27 @@ async function gemini(parts, json = true) {
 }
 
 /* =========================================================== VIEWS */
+function vSetup() {
+  const st = U.setup;
+  return `<div style="min-height:calc(100vh - 90px);display:grid;place-items:center;padding:18px">
+    <div class="card" style="max-width:440px;width:100%;margin:0">
+      <div class="ch"><h2><span class="ico t-ind">🛒</span>Welcome to ShelfSense AI</h2></div>
+      <div class="muted" style="margin:-6px 0 14px">Step 1 — your AI backend. It powers shelf scanning, voice parsing and the advisor. Change it anytime in Settings.</div>
+      <div class="chips">${[['gemini', '☁️ Google Gemini API'], ['custom', '🖥️ Local Gemma / own server']].map(([v, l]) => `<button class="chip ${st.mode === v ? 'on' : ''}" data-a="setupMode" data-v="${v}">${l}</button>`).join('')}</div>
+      ${st.mode === 'gemini' ? `
+        <label class="lb">Gemini API key — free at aistudio.google.com</label>
+        <input class="f" id="su_key" type="password" placeholder="AIza…" autocomplete="off" value="${esc(set().apiKey)}">
+        <div class="muted small mt">Cloud; works from any device. Key stays on your device.</div>` : `
+        <label class="lb">Local server base URL (OpenAI-compatible)</label>
+        <input class="f" id="su_url" placeholder="http://localhost:8080" value="${esc(set().aiBaseUrl)}">
+        <label class="lb" style="margin-top:10px">Model name</label>
+        <input class="f" id="su_model" value="${esc(set().aiModel)}">
+        <div class="muted small mt">Serve Gemma locally, e.g. <code>llama-server -hf google/gemma-4-e4a --port 8080</code>, then enter <code>http://localhost:8080</code>. Fully offline AI.</div>`}
+      <div class="g2 mt2"><button class="btn pri" data-a="setupTest" ${st.busy ? 'disabled' : ''}>${st.busy ? 'Testing…' : 'Test & continue'}</button>
+        <button class="btn ghost" data-a="setupSkip">Skip — on-device only</button></div>
+      ${st.msg ? `<div class="muted small mt" style="color:var(--bad)">${esc(st.msg)}</div>` : ''}
+    </div></div>`;
+}
 function vHome() {
   const a = A(), rows = a.rows, now = Date.now(), d0 = new Date(); d0.setHours(0, 0, 0, 0);
   const sales = S.moves.filter(m => m.type === 'sale');
@@ -355,7 +405,7 @@ function chart(s) {
   return g + '</svg>';
 }
 function vScan() {
-  const sc = U.scan, useG = set().engine === 'gemini' || (set().engine === 'auto' && set().apiKey);
+  const sc = U.scan, useG = set().engine === 'gemini' || (set().engine === 'auto' && aiReady());
   let o = `<div class="card"><div class="ch"><h2><span class="ico t-ok">📸</span>Scan the store</h2><span class="sub">${useG ? 'Gemini Vision' : 'On-device AI'}</span></div>
   <div class="viewer">
     ${sc.camOn && !sc.image ? `<video id="video" playsinline muted autoplay></video><canvas id="liveCv"></canvas><span class="corner c1"></span><span class="corner c2"></span><span class="corner c3"></span><span class="corner c4"></span>${sc.live ? '' : '<div class="laser"></div>'}` : ''}
@@ -367,7 +417,7 @@ function vScan() {
      <button class="btn sec" data-a="pick" data-v="videoIn">🎞️ Shelf video</button><button class="btn sec" data-a="esp">📡 ESP32-CAM</button></div>`
     : `<div class="g3 mt"><button class="btn pri" data-a="capture">◉ Capture</button><button class="btn sec" data-a="live">${sc.live ? '⏸ Live off' : '👁 Live AI'}</button><button class="btn ghost" data-a="camoff">✕ Close</button></div>`;
   if (sc.image && !sc.busy) o += `<button class="btn ghost w mt" data-a="rescan">↺ Scan again</button>`;
-  if (sc.live) o += `<div class="muted small mt">Live mode runs on-device and recognizes generic items (bottles, fruit, vegetables). Tap Capture for full product recognition${set().apiKey ? ' with Gemini' : ''}.</div>`;
+  if (sc.live) o += `<div class="muted small mt">Live mode runs on-device and recognizes generic items (bottles, fruit, vegetables). Tap Capture for full product recognition${aiReady() ? ' with ' + aiLabel() : ''}.</div>`;
   o += `</div>`;
   if (sc.dets.length) o += `<div class="card"><div class="ch"><h2><span class="ico t-info">🔎</span>${sc.dets.length} products found</h2><span class="sub">${esc(sc.engine)}</span></div>
     <div class="muted small" style="margin:-4px 0 10px">Check names, quantities and prices, then save to inventory.</div><div class="list">${sc.dets.map((d, i) => `
@@ -439,7 +489,13 @@ function vStock() {
     <div class="search">${I.search}<input class="f" id="q" placeholder="Search products…" value="${esc(U.inv.q)}"></div>
     <div class="chips">${[['name', 'A–Z'], ['low', '⚠️ Need first'], ['value', '💰 Value'], ['sold', '🕑 Recently sold']].map(([v, l]) => `<button class="chip ${U.inv.sort === v ? 'on' : ''}" data-a="sort" data-v="${v}">${l}</button>`).join('')}</div>
     <div class="chips">${['All', 'Low'].concat(cats).map(c => `<button class="chip ${U.inv.cat === c ? 'on' : ''}" data-a="cat" data-v="${esc(c)}">${c === 'Low' ? '⚠️ Low stock' : esc(c)}</button>`).join('')}</div>
-    <div class="list mt" id="stocklist">${stockList()}</div></div><div class="fab"><button class="btn pri" data-a="edit" data-v="">＋</button></div>`;
+    <div class="list mt" id="stocklist">${stockList()}</div></div>
+  ${S.moves.length ? `<div class="card"><div class="ch"><h2><span class="ico t-ok">🕑</span>Movement ledger</h2><span class="sub">${S.moves.length} records</span></div>
+    <div class="list">${[...S.moves].sort((a, b) => b.ts - a.ts).slice(0, 30).map(m => { const p = prod(m.productId); return `<div class="it"><div class="em">${m.type === 'sale' ? '💵' : m.type === 'restock' ? '📦' : '🧮'}</div>
+      <div class="mid"><div class="tt">${m.type === 'sale' ? 'Sold' : m.type === 'restock' ? 'Received' : 'Adjusted'} ${fq(Math.abs(m.qty), p?.unit)} · ${esc(p?.name || '(deleted)')}</div>
+      <div class="ss">${ago(m.ts)} · ${esc(m.source || 'manual')}${m.text ? ' · “' + esc(m.text) + '”' : ''}</div></div></div>`; }).join('')}</div>
+    ${S.moves.length > 30 ? `<div class="muted small mt">showing the latest 30 of ${S.moves.length}</div>` : ''}</div>` : ''}
+  <div class="fab"><button class="btn pri" data-a="edit" data-v="">＋</button></div>`;
 }
 function vSettings() {
   const s = set(), inp = (k, type = 'text', extra = '') => `<input class="f" type="${type}" data-set="${k}" value="${esc(s[k])}" ${extra}>`;
@@ -447,11 +503,17 @@ function vSettings() {
   return `<div class="card"><div class="ch"><h2><span class="ico t-ok">🏪</span>Store</h2></div>
     <label class="lb">Store name</label>${inp('storeName')}
     <div class="g2"><div><label class="lb">Currency</label>${inp('currency')}</div><div><label class="lb">Voice language</label><select class="f" data-set="lang">${[['en-US', 'English (US)'], ['en-GB', 'English (UK)'], ['es-ES', 'Español (ES)'], ['es-MX', 'Español (MX)'], ['es-CR', 'Español (CR)'], ['hi-IN', 'Hindi'], ['fr-FR', 'Français'], ['pt-BR', 'Português']].map(([v, l]) => `<option value="${v}" ${v === s.lang ? 'selected' : ''}>${l}</option>`).join('')}</select></div></div></div>
-  <div class="card"><div class="ch"><h2><span class="ico t-ind">🤖</span>AI engine</h2><span class="pill ${s.apiKey ? '' : 'off'}"><i></i>${s.apiKey ? 'Gemini on' : 'On-device'}</span></div>
+  <div class="card"><div class="ch"><h2><span class="ico t-ind">🤖</span>AI backend</h2><span class="pill ${aiReady() ? '' : 'off'}"><i></i>${aiReady() ? aiLabel() : 'On-device'}</span></div>
+    <label class="lb">Backend</label><select class="f" data-set="aiMode">${[['gemini', 'Google Gemini API (cloud, API key)'], ['custom', 'Custom / local server (OpenAI-compatible — Gemma, llama.cpp, ollama…)']].map(([v, l]) => `<option value="${v}" ${v === s.aiMode ? 'selected' : ''}>${l}</option>`).join('')}</select>
     <label class="lb">Google Gemini API key</label><div class="inrow">${inp('apiKey', 'password', 'id="key" placeholder="AIza…" autocomplete="off"')}<button class="btn sm ghost" data-a="showkey">Show</button></div>
     <div class="muted small mt">Get a free key at aistudio.google.com. Saved only on this device. Without a key, detection and voice parsing run on-device.</div>
-    <div class="g2"><div><label class="lb">Model</label>${inp('model')}</div><div><label class="lb">Detection</label><select class="f" data-set="engine">${[['auto', 'Auto'], ['gemini', 'Gemini only'], ['coco', 'On-device only']].map(([v, l]) => `<option value="${v}" ${v === s.engine ? 'selected' : ''}>${l}</option>`).join('')}</select></div></div>
-    <button class="btn sec w mt" data-a="test">🔌 Test Gemini connection</button>
+    <div class="g2"><div><label class="lb">Gemini model</label>${inp('model')}</div><div><label class="lb">Detection</label><select class="f" data-set="engine">${[['auto', 'Auto'], ['gemini', 'Gemini only'], ['coco', 'On-device only']].map(([v, l]) => `<option value="${v}" ${v === s.engine ? 'selected' : ''}>${l}</option>`).join('')}</select></div></div>
+    <div class="mt" style="border-top:1px solid var(--line);padding-top:12px">
+      <label class="lb">Local server base URL</label>${inp('aiBaseUrl', 'text', 'placeholder="http://localhost:8080"')}
+      <div class="g2"><div><label class="lb">Local model</label>${inp('aiModel')}</div><div></div></div>
+      <div class="muted small mt">For all AI features on YOUR machine: serve Gemma (e.g. <code>llama-server -hf google/gemma-4-e4a --port 8080</code>) and set Backend to Custom. The server must allow this origin (llama.cpp does; ollama needs OLLAMA_ORIGINS=*).</div>
+    </div>
+    <button class="btn sec w mt" data-a="test">🔌 Test AI connection</button>
     <label class="lb">ESP32-CAM capture URL</label>${inp('espUrl', 'text', 'placeholder="http://192.168.1.50/capture"')}</div>
   <div class="card"><div class="ch"><h2><span class="ico t-info">🎙️</span>Voice</h2></div>${tg('autoApply', 'Auto-record', 'Save immediately when every product is recognized')}${tg('speak', 'Spoken confirmation', 'Reads back the sale and low-stock warnings')}</div>
   <div class="card"><div class="ch"><h2><span class="ico t-warn">📊</span>Reorder rules</h2></div>
@@ -491,8 +553,16 @@ function vSheet() {
 
 /* =========================================================== RENDER */
 function render() {
+  const navEl = document.querySelector('.nav');
+  if (!set().setupDone) {
+    if (navEl) navEl.style.display = 'none';
+    $('#view').innerHTML = vSetup();
+    $('#sheet').innerHTML = '';
+    return;
+  }
+  if (navEl) navEl.style.display = '';
   $('#storeName').textContent = set().storeName;
-  const pill = $('#enginePill'); pill.className = 'pill ' + (set().apiKey ? '' : 'off'); pill.innerHTML = `<i></i>${set().apiKey ? 'Gemini AI' : 'On-device'}`;
+  const pill = $('#enginePill'); pill.className = 'pill ' + (aiReady() ? '' : 'off'); pill.innerHTML = `<i></i>${aiReady() ? aiLabel() : 'On-device'}`;
   const V = { home: vHome, scan: vScan, sell: vSell, stock: vStock, settings: vSettings }[U.tab];
   $('#view').innerHTML = `<div class="view">${V()}</div>`;
   $('#sheet').innerHTML = vSheet();
@@ -564,18 +634,18 @@ Return ONLY a JSON array, one object per distinct product: {"name": string, "cat
 }
 async function analyze(imgs) {
   const sc = U.scan; sc.image = imgs[0]; sc.dets = []; sc.busy = true;
-  const useG = set().engine === 'gemini' || (set().engine === 'auto' && set().apiKey);
+  const useG = set().engine === 'gemini' || (set().engine === 'auto' && aiReady());
   sc.status = useG ? `Gemini is identifying products in ${imgs.length} image${imgs.length > 1 ? 's' : ''}…` : 'Preparing on-device AI…'; render();
   let d = [];
-  try { if (useG) { d = await geminiDetect(imgs); sc.engine = 'Gemini Vision'; } else { d = await cocoDetect(imgs[0]); sc.engine = 'On-device COCO-SSD'; } }
+  try { if (useG) { d = await geminiDetect(imgs); sc.engine = aiLabel(); } else { d = await cocoDetect(imgs[0]); sc.engine = 'On-device COCO-SSD'; } }
   catch (e) {
-    if (useG && set().engine === 'auto') { toast('Gemini failed — using on-device model. ' + e.message, 'warn', 5000); try { d = await cocoDetect(imgs[0]); sc.engine = 'On-device COCO-SSD'; } catch (e2) { toast(e2.message, 'err', 5000); } }
+    if (useG && set().engine === 'auto') { toast(aiLabel() + ' failed — using on-device model. ' + e.message, 'warn', 5000); try { d = await cocoDetect(imgs[0]); sc.engine = 'On-device COCO-SSD'; } catch (e2) { toast(e2.message, 'err', 5000); } }
     else toast(e.message, 'err', 5000);
   }
   sc.busy = false;
   sc.dets = d.map(x => { const m = Core.matchProduct(x.name, S.products); return { name: x.name, category: CAT[x.category] ? x.category : 'Other', count: Math.max(0, +x.count || 1), unit: UNITS.includes(x.unit) ? x.unit : 'unit', price: m.product ? m.product.price : (+x.price || null), confidence: x.confidence, box: x.box, include: true, matchId: m.product?.id || null }; });
   render();
-  if (d.length) toast(`Found ${d.length} product type${d.length > 1 ? 's' : ''}`, 'ok'); else toast('No products recognized — try a closer, well-lit photo' + (set().apiKey ? '' : ' or add a Gemini key'), 'warn', 5000);
+  if (d.length) toast(`Found ${d.length} product type${d.length > 1 ? 's' : ''}`, 'ok'); else toast('No products recognized — try a closer, well-lit photo' + (aiReady() ? '' : ' or configure an AI backend'), 'warn', 5000);
 }
 async function toggleLive() {
   if (U.scan.live) { U.scan.live = false; clearTimeout(liveTimer); render(); return; }
@@ -621,7 +691,7 @@ function listen() {
 async function command(text, source) {
   U.voice.transcript = text;
   let P = Core.parseCommand(text, S.products);
-  if ((!P.items.length || P.items.some(i => !i.productId)) && set().apiKey && S.products.length) {
+  if ((!P.items.length || P.items.some(i => !i.productId)) && aiReady() && S.products.length) {
     U.voice.busy = true; render();
     try {
       const r = await gemini([{ text: `You parse voice commands from a grocery shop owner (any language). Inventory product names: ${JSON.stringify(S.products.map(p => p.name))}.
@@ -660,7 +730,7 @@ function apply() {
 async function advisor() {
   U.ai.busy = true; U.ai.text = ''; render();
   const a = A(), rows = a.rows;
-  if (set().apiKey) {
+  if (aiReady()) {
     try {
       const facts = rows.map(r => ({ product: r.p.name, unit: r.p.unit, stock: +r.p.stock.toFixed(2), avgDaily: +r.avgDaily.toFixed(2), qty7d: +r.qty7.toFixed(2), revenue7d: +r.rev7.toFixed(2), trendPct: Math.round(r.trend * 100), daysLeft: isFinite(r.daysLeft) ? +r.daysLeft.toFixed(1) : null, status: r.status, recommendedOrder: r.reorderQty }));
       U.ai.text = await gemini([{ text: `You are the AI employee of the small grocery store "${set().storeName}". Currency ${set().currency}. Supplier lead time ${set().leadDays} days.
@@ -735,6 +805,23 @@ const ACT = {
   listen, typed: () => { const t = $('#typed').value.trim(); if (t) command(t, 'typed'); }, ex: el => command(el.dataset.v, 'typed'),
   apply, cancelParse: () => { U.voice.parsed = null; render(); },
   undo: el => { const m = S.moves.find(x => x.id === el.dataset.v); if (!m) return; const p = prod(m.productId); if (p) p.stock = Math.max(0, +(p.stock - (m.delta ?? (m.type === 'sale' ? -m.qty : m.qty))).toFixed(3)); S.moves = S.moves.filter(x => x !== m); save(); render(); toast('↩️ Undone'); },
+  setupMode: el => { U.setup.mode = el.dataset.v; U.setup.msg = ''; render(); },
+  setupSkip: () => { set().setupDone = true; save(); render(); toast('On-device mode — configure an AI backend anytime in Settings', 'warn', 5000); },
+  setupTest: async () => {
+    const st = U.setup;
+    if (st.mode === 'gemini') set().apiKey = ($('#su_key')?.value || '').trim();
+    else { set().aiBaseUrl = ($('#su_url')?.value || '').trim(); set().aiModel = ($('#su_model')?.value || '').trim() || 'gemma-4-e4a'; }
+    set().aiMode = st.mode;
+    if (st.mode === 'gemini' && !set().apiKey) { st.msg = 'Paste your Gemini API key first'; return render(); }
+    if (st.mode === 'custom' && !set().aiBaseUrl) { st.msg = 'Enter your local server URL first'; return render(); }
+    st.busy = true; st.msg = ''; render();
+    try {
+      const r = await gemini([{ text: 'Reply with JSON {"ok":true}' }]);
+      if (!r || !r.ok) throw new Error('unexpected reply from the backend');
+      set().setupDone = true; st.busy = false; save(); render();
+      toast(`✅ ${aiLabel()} connected — welcome aboard`, 'ok');
+    } catch (e) { st.busy = false; st.msg = e.message || String(e); render(); }
+  },
   cat: el => { U.inv.cat = el.dataset.v; render(); }, sort: el => { U.inv.sort = el.dataset.v; render(); }, qm: el => quick(el.dataset.v, el.dataset.t),
   invCsv: () => {
     const rows = A().rows.sort((a, b) => a.p.name.localeCompare(b.p.name));
@@ -766,7 +853,7 @@ const ACT = {
   saveP, delP: () => { if (!confirm('Delete this product and its history?')) return; const id = U.edit.id; S.products = S.products.filter(p => p.id !== id); S.moves = S.moves.filter(m => m.productId !== id); U.edit = null; save(); render(); },
   toggle: el => { S.settings[el.dataset.v] = !S.settings[el.dataset.v]; save(); el.classList.toggle('on'); },
   showkey: el => { const k = $('#key'); k.type = k.type === 'password' ? 'text' : 'password'; el.textContent = k.type === 'password' ? 'Show' : 'Hide'; },
-  test: async () => { try { const r = await gemini([{ text: 'Reply with JSON {"ok":true}' }]); toast(r.ok ? '✅ Gemini connected' : 'Unexpected reply', r.ok ? 'ok' : 'warn'); } catch (e) { toast(e.message, 'err', 5000); } },
+  test: async () => { try { const r = await gemini([{ text: 'Reply with JSON {"ok":true}' }]); toast(r && r.ok ? `✅ ${aiLabel()} connected` : 'Unexpected reply', r && r.ok ? 'ok' : 'warn'); } catch (e) { toast(e.message, 'err', 5000); } },
   export: () => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify({ ...S, settings: { ...S.settings, apiKey: '' } }, null, 2)], { type: 'application/json' })); a.download = `shelfsense-${new Date().toISOString().slice(0, 10)}.json`; a.click(); },
   reset: () => { if (confirm('Erase all products and sales on this device?')) { S.products = []; S.moves = []; U.ai.text = ''; save(); render(); toast('All data erased'); } }
 };
@@ -784,7 +871,7 @@ document.addEventListener('input', ev => {
 document.addEventListener('change', ev => {
   const t = ev.target;
   if (t.dataset.set) { const k = t.dataset.set; S.settings[k] = t.type === 'number' ? (+t.value || 0) : t.value.trim(); save();
-    $('#storeName').textContent = set().storeName; const pill = $('#enginePill'); pill.className = 'pill ' + (set().apiKey ? '' : 'off'); pill.innerHTML = `<i></i>${set().apiKey ? 'Gemini AI' : 'On-device'}`; }
+    $('#storeName').textContent = set().storeName; const pill = $('#enginePill'); pill.className = 'pill ' + (aiReady() ? '' : 'off'); pill.innerHTML = `<i></i>${aiReady() ? aiLabel() : 'On-device'}`; }
   if (t.dataset.det !== undefined) { const d = U.scan.dets[+t.dataset.det];
     if (t.dataset.k === 'name') { const m = Core.matchProduct(d.name, S.products); d.matchId = m.product?.id || null; if (m.product && !d.price) d.price = m.product.price; render(); }
     else if (t.dataset.k === 'include') render(); }

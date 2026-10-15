@@ -42,6 +42,20 @@ a free Gemini API key (aistudio.google.com) to light up Gemini Vision shelf
 scanning, AI voice parsing and the business advisor — the "Gen AI
 Implementation" that is 40% of the judging.
 
+## The AI backend (first-run setup)
+
+The app opens with a setup wizard: pick **Google Gemini API** (paste a free
+aistudio.google.com key) or **Local Gemma / own server** (any
+OpenAI-compatible endpoint - llama-server -hf google/gemma-4-e4a --port
+8080, then http://localhost:8080), test it live, continue. Skippable -
+on-device COCO-SSD detection keeps working either way, and Settings -> AI
+backend swaps the endpoint anytime. One dispatcher fronts both backends:
+vision shelf scans, voice-command parsing and the business advisor all
+follow the setting. Gemma counts for the cup's "Gemini or Gemma" rule.
+
+A local server must allow the app's origin (llama.cpp does; ollama needs
+OLLAMA_ORIGINS=*).
+
 ## Dev
 
 No build step — open `index.html`, or `npx serve .`. Without a Firebase
