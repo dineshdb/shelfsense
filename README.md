@@ -1,5 +1,8 @@
 # ShelfSense AI — the Firebase app
 
+Astro + Vite + Tailwind CSS toolchain (one client-rendered page — no SSR by
+design); Firebase from npm; hosting serves the built `dist/`.
+
 The AI-powered smart retail assistant (AI Builder Cup 2026, Retail &
 Commerce): single-file web app — shelf scanning (Gemini Vision / on-device
 COCO-SSD), voice sales with composite notes, AI reorder forecasting, AI
@@ -18,8 +21,8 @@ business advisor, inventory management — now a Firebase app:
 3. **Build → Firestore Database → Create database** (production mode, any
    region — the rules below scope each user to their own doc).
 4. **Project settings → Your apps → Web app (</>)** → copy the `firebaseConfig`
-   object → paste it as `window.FIREBASE_CONFIG` in `index.html`
-   (the `<script>` right before `</head>`). Committing a web config is safe
+   object → paste it as `window.FIREBASE_CONFIG` in
+   `src/pages/index.astro` (the `is:inline` script in `<head>`). Committing a web config is safe
    by design; restrict via the console's authorized domains if you like.
 5. Paste the project id into `.firebaserc` (replace `YOUR_PROJECT_ID`).
 6. Deploy:
@@ -28,7 +31,13 @@ business advisor, inventory management — now a Firebase app:
        firebase login
        firebase deploy           # hosting + firestore rules
 
-The deployed URL is the cup submission link. For the demo: Settings → paste
+The deployed URL is the cup submission link.
+
+## Build
+
+    npm install
+    npm run dev        # http://localhost:4321 (config empty = local-only)
+    npm run build      # -> dist/  (firebase deploy ships this) For the demo: Settings → paste
 a free Gemini API key (aistudio.google.com) to light up Gemini Vision shelf
 scanning, AI voice parsing and the business advisor — the "Gen AI
 Implementation" that is 40% of the judging.
