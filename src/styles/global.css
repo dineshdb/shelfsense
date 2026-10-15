@@ -1547,18 +1547,11 @@ select.f {
     margin-bottom: 0;
   }
 
-  /* settings: cards in two columns; the footer strip spans the row */
+  /* settings: one flowing column, readable line lengths, centered */
   .settingsgrid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 14px;
-    align-items: start;
-  }
-  .settingsgrid > .card {
-    margin-bottom: 0;
-  }
-  .settingsgrid > .span2 {
-    grid-column: 1 / -1;
+    display: block;
+    max-width: 680px;
+    margin: 0 auto;
   }
 
   /* roomier rows and bill lines on a wide screen (mobile wrap unchanged) */
@@ -1580,4 +1573,19 @@ select.f {
     grid-template-columns: minmax(0, 1.2fr) 88px 88px;
     gap: 10px;
   }
+}
+
+/* settings section numbers: a small filled index ahead of each title */
+.stp {
+  width: 21px;
+  height: 21px;
+  border-radius: 999px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  display: inline-grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 700;
+  font-family: var(--font-sans);
+  flex: 0 0 21px;
 }

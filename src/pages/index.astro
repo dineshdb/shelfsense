@@ -47,11 +47,9 @@ import "../styles/global.css";
 
 <div class="shell">
   <div class="appbar">
-    <div class="brand">
+    <div class="brand" data-a="tab" data-v="home" title="Home">
       <div class="logo" id="logo"></div>
-      <div class="bt"><b id="storeName">My Grocery Store</b><span class="tag">ShelfSense AI · your AI store employee</span></div>
-      <span class="pill off" id="enginePill"><i></i>On-device</span>
-      <span class="pill off" id="cloudPill" style="display:none"><i></i>Local</span>
+      <div class="bt"><b id="storeName">My Grocery Store</b></div>
     </div>
     <nav class="nav">
       <button data-a="tab" data-v="home"><span>Insights</span></button>
@@ -507,7 +505,7 @@ function vScan() {
     ${sc.busy ? `<div class="busy"><div><div class="spin"></div>${esc(sc.status)}</div></div>` : ''}
   </div>`;
   o += !sc.camOn ? `<div class="g2 mt"><button class="btn pri" data-a="cam">🎥 Live camera</button><button class="btn sec" data-a="pick" data-v="photoIn">🖼️ Photos</button></div>`
-    : `<div class="g3 mt"><button class="btn pri" data-a="capture">◉ Capture</button><button class="btn sec" data-a="live">${sc.live ? '⏸ Live off' : '👁 Live AI'}</button><button class="btn ghost" data-a="camoff">✕ Close</button></div>`;
+    : `<div class="g3 mt"><button class="btn pri" data-a="capture">◉ Capture</button><button class="btn ghost" data-a="camoff">✕ Close</button></div>`;
   if (sc.image && !sc.busy) o += `<button class="btn ghost w mt" data-a="rescan">↺ Scan again</button>`;
   if (sc.live) o += `<div class="muted small mt">Live mode runs on-device and recognizes generic items (bottles, fruit, vegetables). Tap Capture for full product recognition${aiReady() ? ' with ' + aiLabel() : ''}.</div>`;
   o += `</div>`;
@@ -587,16 +585,17 @@ function vStock() {
   const val = S.products.reduce((s, p) => s + Math.max(0, p.stock) * (p.cost || p.price * .75 || 0), 0);
   const rows = A().rows;
   const nOut = rows.filter(r => r.status === 'out').length, nLow = rows.filter(r => r.status === 'low').length;
-  return `<div class="stockgrid"><div class="card"><div class="ch"><h2><span class="ico t-ind">📦</span>Inventory</h2><button class="btn sm sec" data-a="invCsv">⬇️ CSV</button></div>
-    <div class="stats"><div><b>${S.products.length}</b><span>Products</span></div>
-      <div><b style="color:${nLow ? 'var(--warn)' : 'inherit'}">${nLow}</b><span>Low</span></div>
-      <div><b style="color:${nOut ? 'var(--bad)' : 'inherit'}">${nOut}</b><span>Out</span></div>
-      <div><b>${money(val)}</b><span>Stock value</span></div></div>
+  const health = rows.length ? Math.round(rows.filter(r => r.status === 'ok' || r.status === 'slow').length / rows.length * 100) : 100;
+  return `<div class="stockgrid">
+  <div class="hero" style="grid-column:1/-1"><div class="row"><div><div class="g">Stock · ${rows.length} products tracked</div><div class="big">${money(val)}</div>
+    <div class="sm">stock value at cost · <span style="color:${nLow ? 'var(--warn)' : 'inherit'}">${nLow} low</span>${nOut ? ` · <span style="color:var(--bad)">${nOut} out</span>` : ''}</div></div>
+    <div class="ring" style="--p:${health}"><div><b>${health}%</b><small>Healthy</small></div></div></div></div>
+  <div class="card"><div class="ch"><h2><span class="ico t-ind">📦</span>Inventory</h2><button class="btn sm sec" data-a="invCsv">⬇️ CSV</button></div>
     <div class="search">${I.search}<input class="f" id="q" placeholder="Search products…" value="${esc(U.inv.q)}"></div>
     <div class="chips">${[['name', 'A–Z'], ['low', '⚠️ Need first'], ['value', '💰 Value'], ['sold', '🕑 Recently sold']].map(([v, l]) => `<button class="chip ${U.inv.sort === v ? 'on' : ''}" data-a="sort" data-v="${v}">${l}</button>`).join('')}</div>
     <div class="chips">${['All', 'Low'].concat(cats).map(c => `<button class="chip ${U.inv.cat === c ? 'on' : ''}" data-a="cat" data-v="${esc(c)}">${c === 'Low' ? '⚠️ Low stock' : esc(c)}</button>`).join('')}</div>
     <div class="list mt" id="stocklist">${stockList()}</div></div>
-  ${S.moves.length ? `<div class="card"><div class="ch"><h2><span class="ico t-ok">🕑</span>Movement ledger</h2><span class="sub">${S.moves.length} records</span></div>
+  ${S.moves.length ? `<div class="card"><div class="ch"><h2><span class="ico t-ok">🕑</span>Activity</h2><span class="sub">${S.moves.length} records</span></div>
     <div class="list">${[...S.moves].sort((a, b) => b.ts - a.ts).slice(0, 30).map(m => { const p = prod(m.productId); return `<div class="it"><div class="em">${m.type === 'sale' ? '💵' : m.type === 'restock' ? '📦' : '🧮'}</div>
       <div class="mid"><div class="tt">${m.type === 'sale' ? 'Sold' : m.type === 'restock' ? 'Received' : 'Adjusted'} ${fq(Math.abs(m.qty), p?.unit)} · ${esc(p?.name || '(deleted)')}</div>
       <div class="ss">${ago(m.ts)} · ${esc(m.source || 'manual')}${m.text ? ' · “' + esc(m.text) + '”' : ''}</div></div></div>`; }).join('')}</div>
@@ -607,10 +606,13 @@ function vStock() {
 function vSettings() {
   const s = set(), inp = (k, type = 'text', extra = '') => `<input class="f" type="${type}" data-set="${k}" value="${esc(s[k])}" ${extra}>`;
   const tg = (k, t, d) => `<div class="sw"><div><b>${t}</b><div class="muted small">${d}</div></div><button class="tg ${s[k] ? 'on' : ''}" data-a="toggle" data-v="${k}"></button></div>`;
-  return `<div class="settingsgrid"><div class="card"><div class="ch"><h2><span class="ico t-ok">🏪</span>Store</h2></div>
-    <label class="lb">Store name</label>${inp('storeName')}
-    <div class="g2"><div><label class="lb">Currency</label>${inp('currency')}</div><div><label class="lb">Voice language</label><select class="f" data-set="lang">${[['en-US', 'English (US)'], ['en-GB', 'English (UK)'], ['es-ES', 'Español (ES)'], ['es-MX', 'Español (MX)'], ['es-CR', 'Español (CR)'], ['hi-IN', 'हिन्दी Hindi'], ['ne-NP', 'नेपाली Nepali'], ['fr-FR', 'Français'], ['pt-BR', 'Português']].map(([v, l]) => `<option value="${v}" ${v === s.lang ? 'selected' : ''}>${l}</option>`).join('')}</select></div></div></div>
-  <div class="card"><div class="ch"><h2><span class="ico t-ind">🤖</span>AI backend</h2><span class="pill ${aiReady() ? '' : 'off'}"><i></i>${aiReady() ? aiLabel() : 'On-device'}</span></div>
+  const sec = (n, ico, cls, title, body) => `<div class="card"><div class="ch"><h2><span class="stp">${n}</span><span class="ico ${cls}">${ico}</span>${title}</h2></div>${body}</div>`;
+  return `<div class="settingsgrid">
+  ${sec(1, '🏪', 't-ok', 'Store', `
+    <label class="lb">Shop name</label>${inp('storeName')}
+    <div class="g2"><div><label class="lb">Currency</label>${inp('currency')}</div><div><label class="lb">Voice language</label><select class="f" data-set="lang">${[['en-US', 'English (US)'], ['en-GB', 'English (UK)'], ['es-ES', 'Español (ES)'], ['es-MX', 'Español (MX)'], ['es-CR', 'Español (CR)'], ['hi-IN', 'हिन्दी Hindi'], ['ne-NP', 'नेपाली Nepali'], ['fr-FR', 'Français'], ['pt-BR', 'Português']].map(([v, l]) => `<option value="${v}" ${v === s.lang ? 'selected' : ''}>${l}</option>`).join('')}</select></div></div>`)}
+  ${sec(2, '🤖', 't-ind', 'AI backend', `
+    <div class="ch" style="border:0;padding:0 0 2px"><span class="pill ${aiReady() ? '' : 'off'}"><i></i>${aiReady() ? aiLabel() : 'On-device'}</span></div>
     <label class="lb">Backend</label><select class="f" data-set="aiMode">${[['gemini', 'Google Gemini API (cloud, API key)'], ['custom', 'Custom / local server (OpenAI-compatible — Gemma, llama.cpp, ollama…)']].map(([v, l]) => `<option value="${v}" ${v === s.aiMode ? 'selected' : ''}>${l}</option>`).join('')}</select>
     <label class="lb">Google Gemini API key</label><div class="inrow">${inp('apiKey', 'password', 'id="key" placeholder="AIza…" autocomplete="off"')}<button class="btn sm ghost" data-a="showkey">Show</button></div>
     <div class="muted small mt">Get a free key at aistudio.google.com. Saved only on this device. Without a key, detection and voice parsing run on-device.</div>
@@ -620,23 +622,22 @@ function vSettings() {
       <div class="g2"><div><label class="lb">Local model</label>${inp('aiModel')}</div><div></div></div>
       <div class="muted small mt">For all AI features on YOUR machine: your merve gateway (<code>http://localhost:8283/v1</code>, model <code>gemma-4-e4b</code>) or any OpenAI-compatible server. Tip: open <code>http://localhost:8283</code> itself — it serves this app next to the AI, same origin, so no browser permission is needed (llama.cpp + CORS shim does the rest; ollama needs OLLAMA_ORIGINS=*).</div>
     </div>
-    <button class="btn sec w mt" data-a="test">🔌 Test AI connection</button>
-</div>
-  <div class="card"><div class="ch"><h2><span class="ico t-ind">◐</span>Theme</h2></div>
+    <button class="btn sec w mt" data-a="test">🔌 Test AI connection</button>`)}
+  ${sec(3, '🎙️', 't-info', 'Voice', `${tg('autoApply', 'Auto-record', 'Save immediately when every product is recognized')}${tg('speak', 'Spoken confirmation', 'Reads back the sale and low-stock warnings')}`)}
+  ${sec(4, '📊', 't-warn', 'Reorder rules', `
+    <div class="g3"><div><label class="lb">Lead days</label>${inp('leadDays', 'number', 'min="0"')}</div><div><label class="lb">Cover days</label>${inp('coverDays', 'number', 'min="1"')}</div><div><label class="lb">Safety days</label>${inp('safetyDays', 'number', 'min="0"')}</div></div>
+    <label class="lb">Sales history window (days)</label>${inp('windowDays', 'number', 'min="7"')}
+    <div class="muted small mt">Reorder point = avg daily sales × (lead + safety). Order = avg daily × (lead + cover + safety) − stock.</div>`)}
+  ${sec(5, '🎨', 't-slow', 'Appearance', `
     <div class="flex between"><span class="muted small">Follows your choice; Auto tracks the system.</span>
       <div class="chips" role="group" aria-label="Theme">${[['auto', 'Auto'], ['light', 'Light'], ['dark', 'Dark']].map(([v, l]) => {
         let cur = 'auto'; try { cur = localStorage.getItem("shelfsense:theme") || 'auto'; } catch {}
         return `<button class="chip ${cur === v ? 'on' : ''}" data-a="theme" data-v="${v}">${l}</button>`;
-      }).join('')}</div></div></div>
-  <div class="card"><div class="ch"><h2><span class="ico t-info">🎙️</span>Voice</h2></div>${tg('autoApply', 'Auto-record', 'Save immediately when every product is recognized')}${tg('speak', 'Spoken confirmation', 'Reads back the sale and low-stock warnings')}</div>
-  <div class="card"><div class="ch"><h2><span class="ico t-warn">📊</span>Reorder rules</h2></div>
-    <div class="g3"><div><label class="lb">Lead days</label>${inp('leadDays', 'number', 'min="0"')}</div><div><label class="lb">Cover days</label>${inp('coverDays', 'number', 'min="1"')}</div><div><label class="lb">Safety days</label>${inp('safetyDays', 'number', 'min="0"')}</div></div>
-    <label class="lb">Sales history window (days)</label>${inp('windowDays', 'number', 'min="7"')}
-    <div class="muted small mt">Reorder point = avg daily sales × (lead + safety). Order = avg daily × (lead + cover + safety) − stock.</div></div>
-  <div class="card"><div class="ch"><h2><span class="ico t-slow">💾</span>Data</h2></div><div class="g2">
+      }).join('')}</div></div>`)}
+  ${sec(6, '💾', 't-slow', 'Data', `<div class="g2">
     <button class="btn sec" data-a="demo">✨ Load demo</button><button class="btn sec" data-a="export">⬇️ Export</button>
-    <button class="btn sec" data-a="pick" data-v="importIn">⬆️ Import</button><button class="btn danger" data-a="reset">🗑️ Reset all</button></div></div>
-  <div class="muted small span2" style="text-align:center;padding:4px 0 16px">ShelfSense AI · Smart Retail Assistant</div></div>`;
+    <button class="btn sec" data-a="pick" data-v="importIn">⬆️ Import</button><button class="btn danger" data-a="reset">🗑️ Reset all</button></div>`)}
+  <div class="muted small" style="text-align:center;padding:4px 0 16px">ShelfSense AI · Smart Retail Assistant</div></div>`;
 }
 function vSheet() {
   const e = U.edit; if (!e) return '';
@@ -676,7 +677,7 @@ function render() {
   }
   if (barEl) barEl.style.display = '';
   $('#storeName').textContent = set().storeName;
-  const pill = $('#enginePill'); pill.className = 'pill ' + (aiReady() ? '' : 'off'); pill.innerHTML = `<i></i>${aiReady() ? aiLabel() : 'On-device'}`;
+  const pill = $('#enginePill'); if (pill) { pill.className = 'pill ' + (aiReady() ? '' : 'off'); pill.innerHTML = `<i></i>${aiReady() ? aiLabel() : 'On-device'}`; }
   const V = { home: vHome, scan: vScan, sell: vSell, stock: vStock, settings: vSettings }[U.tab];
   $('#view').innerHTML = `<div class="view">${V()}</div>`;
   $('#sheet').innerHTML = vSheet();
@@ -1091,7 +1092,7 @@ window.__cloudPut = null;
 (function cloud() {
   const FB = window.__firebase, cfg = window.FIREBASE_CONFIG || {};
   const pillEl = $('#cloudPill');
-  const setPill = (on, label) => { pillEl.style.display = ''; pillEl.className = 'pill ' + (on ? '' : 'off'); pillEl.innerHTML = '<i></i>' + label; };
+  const setPill = (on, label) => { if (!pillEl) return; pillEl.style.display = ''; pillEl.className = 'pill ' + (on ? '' : 'off'); pillEl.innerHTML = '<i></i>' + label; };
   if (!FB || !cfg.apiKey) return; // local-only mode: pill stays hidden
   let timer = null, uid = null, applying = false;
   const push = () => {
