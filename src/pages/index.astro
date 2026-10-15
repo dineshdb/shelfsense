@@ -330,7 +330,7 @@ const A = () => Core.analyze(S.products, S.moves, set());
 const aiReady = () => (set().aiMode === 'custom' && set().aiBaseUrl) || !!set().apiKey;
 const aiLabel = () => set().aiMode === 'custom' && set().aiBaseUrl ? `Local ${set().aiModel}` : 'Gemini AI';
 async function aiCustom(parts, json = true) {
-  const base = set().aiBaseUrl.replace(/\/+$/, '');
+  const base = set().aiBaseUrl.replace(/\/+$/, '').replace(/\/v1\/?$/, '');
   const content = [];
   let text = '';
   for (const p of parts) {
@@ -374,7 +374,7 @@ function vSetup() {
         <input class="f" id="su_url" placeholder="http://localhost:8080" value="${esc(set().aiBaseUrl)}">
         <label class="lb" style="margin-top:10px">Model name</label>
         <input class="f" id="su_model" value="${esc(set().aiModel)}">
-        <div class="muted small mt">Point at your merve gateway: <code>http://localhost:8282/v1</code> with model <code>gemma-4-e4b</code> — or any OpenAI-compatible server. Fully offline AI.</div>`}
+        <div class="muted small mt">Point at your merve gateway: <code>http://localhost:8283</code> with model <code>gemma-4-e4b</code> — or any OpenAI-compatible server. Fully offline AI.</div>`}
       <div class="g2 mt2"><button class="btn pri" data-a="setupTest" ${st.busy ? 'disabled' : ''}>${st.busy ? 'Testing…' : 'Test & continue'}</button>
         <button class="btn ghost" data-a="setupSkip">Skip — on-device only</button></div>
       ${st.msg ? `<div class="muted small mt" style="color:var(--bad)">${esc(st.msg)}</div>` : ''}
@@ -546,7 +546,7 @@ function vSettings() {
   const tg = (k, t, d) => `<div class="sw"><div><b>${t}</b><div class="muted small">${d}</div></div><button class="tg ${s[k] ? 'on' : ''}" data-a="toggle" data-v="${k}"></button></div>`;
   return `<div class="card"><div class="ch"><h2><span class="ico t-ok">🏪</span>Store</h2></div>
     <label class="lb">Store name</label>${inp('storeName')}
-    <div class="g2"><div><label class="lb">Currency</label>${inp('currency')}</div><div><label class="lb">Voice language</label><select class="f" data-set="lang">${[['en-US', 'English (US)'], ['en-GB', 'English (UK)'], ['es-ES', 'Español (ES)'], ['es-MX', 'Español (MX)'], ['es-CR', 'Español (CR)'], ['hi-IN', 'Hindi'], ['fr-FR', 'Français'], ['pt-BR', 'Português']].map(([v, l]) => `<option value="${v}" ${v === s.lang ? 'selected' : ''}>${l}</option>`).join('')}</select></div></div></div>
+    <div class="g2"><div><label class="lb">Currency</label>${inp('currency')}</div><div><label class="lb">Voice language</label><select class="f" data-set="lang">${[['en-US', 'English (US)'], ['en-GB', 'English (UK)'], ['es-ES', 'Español (ES)'], ['es-MX', 'Español (MX)'], ['es-CR', 'Español (CR)'], ['hi-IN', 'हिन्दी Hindi'], ['ne-NP', 'नेपाली Nepali'], ['fr-FR', 'Français'], ['pt-BR', 'Português']].map(([v, l]) => `<option value="${v}" ${v === s.lang ? 'selected' : ''}>${l}</option>`).join('')}</select></div></div></div>
   <div class="card"><div class="ch"><h2><span class="ico t-ind">🤖</span>AI backend</h2><span class="pill ${aiReady() ? '' : 'off'}"><i></i>${aiReady() ? aiLabel() : 'On-device'}</span></div>
     <label class="lb">Backend</label><select class="f" data-set="aiMode">${[['gemini', 'Google Gemini API (cloud, API key)'], ['custom', 'Custom / local server (OpenAI-compatible — Gemma, llama.cpp, ollama…)']].map(([v, l]) => `<option value="${v}" ${v === s.aiMode ? 'selected' : ''}>${l}</option>`).join('')}</select>
     <label class="lb">Google Gemini API key</label><div class="inrow">${inp('apiKey', 'password', 'id="key" placeholder="AIza…" autocomplete="off"')}<button class="btn sm ghost" data-a="showkey">Show</button></div>
@@ -555,7 +555,7 @@ function vSettings() {
     <div class="mt" style="border-top:1px solid var(--line);padding-top:12px">
       <label class="lb">Local server base URL</label>${inp('aiBaseUrl', 'text', 'placeholder="http://localhost:8080"')}
       <div class="g2"><div><label class="lb">Local model</label>${inp('aiModel')}</div><div></div></div>
-      <div class="muted small mt">For all AI features on YOUR machine: your merve gateway (<code>http://localhost:8282/v1</code>, model <code>gemma-4-e4b</code>) or any OpenAI-compatible server. It must allow this origin (llama.cpp does; ollama needs OLLAMA_ORIGINS=*).</div>
+      <div class="muted small mt">For all AI features on YOUR machine: your merve gateway (<code>http://localhost:8283/v1</code>, model <code>gemma-4-e4b</code>) or any OpenAI-compatible server. It must allow this origin (llama.cpp does; ollama needs OLLAMA_ORIGINS=*).</div>
     </div>
     <button class="btn sec w mt" data-a="test">🔌 Test AI connection</button>
 </div>
@@ -733,9 +733,9 @@ async function command(text, source) {
   if ((!P.items.length || P.items.some(i => !i.productId)) && aiReady() && S.products.length) {
     U.voice.busy = true; render();
     try {
-      const r = await gemini([{ text: `You parse voice commands from a grocery shop owner (any language). Inventory product names: ${JSON.stringify(S.products.map(p => p.name))}.
+      const r = await gemini([{ text: `You parse voice commands from a grocery shop owner. The command may be in English, Spanish, Hindi (हिन्दी) or Nepali (नेपाली) — including Devanagari script, Devanagari digits (०१२३४५६७८९), and romanized words (chini, bhaat, chamal, chiya, nun, tel, dal). Half = 0.5, quarter = 0.25, "एक पाउ" ≈ 0.5 kg, "आधा किलो" = 0.5 kg, "पाउ" ≈ 0.55 kg if unsure use 0.5. Inventory product names: ${JSON.stringify(S.products.map(p => p.name))}.
 Command: "${text}"
-Return JSON {"intent":"sale"|"restock","items":[{"product": exact inventory name or null,"heard": what the owner said,"qty": number,"unit":"kg"|"g"|"L"|"ml"|"unit"|"pack"|"dozen"|null}]}. sold/vendí = sale; received/arrived/delivery/llegaron = restock.` }]);
+Return JSON {"intent":"sale"|"restock","items":[{"product": exact inventory name or null (match by meaning across languages: चिनी/cheeni→Sugar, चामल/भात/chamal/bhaat→Rice, चिया→Tea, नुन→Salt, तेल→oil, दाल→lentils),"heard": the owner's words for that item, in the original language,"qty": number,"unit":"kg"|"g"|"L"|"ml"|"unit"|"pack"|"dozen"|null}]}. sold/bikri/bikri bhayo/becha/vendí/बिक्री/बेचा = sale; received/arrived/delivery/llegaron/आयो/आए/पसलमा आयो/मंगाएको/खरिद = restock.` }]);
       const items = (r.items || []).map(it => { const p = S.products.find(x => x.name === it.product) || (it.product && Core.matchProduct(it.product, S.products).product); return { query: it.heard || it.product || '?', qty: +it.qty || 1, unit: it.unit || null, productId: p?.id || null }; });
       if (items.length) P = { text, intent: r.intent === 'restock' ? 'restock' : 'sale', items };
     } catch (e) { toast('AI parsing unavailable: ' + e.message, 'warn'); }
