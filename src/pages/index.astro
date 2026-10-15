@@ -105,6 +105,22 @@ const Core = (() => {
   const unitOf = tok => { for (const [re, u] of UNIT_RULES) if (re.test(tok)) return u; return null; };
   const isSaleWord = w => SALE.has(w);
   const isRestockWord = w => RESTOCK.has(w);
+  // Cross-language product words → canonical English token, so a Hindi/Nepali
+  // answer ("दूध", "चिनी", "अन्डा") can land on the inventory entry.
+  const XL = { chini: 'sugar', cheeni: 'sugar', 'चिनी': 'sugar', 'चीनी': 'sugar', 'शक्खर': 'sugar', shakkar: 'sugar',
+    chamal: 'rice', 'चामल': 'rice', chawal: 'rice', 'चावल': 'rice', bhaat: 'rice', 'भात': 'rice',
+    doodh: 'milk', dudh: 'milk', 'दूध': 'milk', 'दुध': 'milk', leche: 'milk',
+    'अन्डा': 'egg', 'अंडा': 'egg', 'अंडे': 'egg', 'अन्डे': 'egg', anda: 'egg', ande: 'egg', huevo: 'egg', huevos: 'egg',
+    'ब्रेड': 'bread', 'पाउरोटी': 'bread', pauroti: 'bread',
+    chiya: 'tea', 'चिया': 'tea', chai: 'tea', 'चाय': 'tea', te: 'tea',
+    nun: 'salt', 'नुन': 'salt', 'नमक': 'salt', namak: 'salt', sal: 'salt',
+    tel: 'oil', 'तेल': 'oil', aceite: 'oil',
+    dal: 'lentils', 'दाल': 'lentils', lenteja: 'lentils',
+    'कोका': 'cola', koka: 'cola', 'कोकाकोला': 'cola', gaseosa: 'cola',
+    kera: 'banana', 'केरा': 'banana', kela: 'banana', 'केला': 'banana', banana: 'banana', platano: 'banana',
+    aloo: 'tomato', alu: 'tomato', 'आलु': 'potato', 'आलू': 'potato', patata: 'potato',
+    golbheda: 'tomato', 'गोलभेडा': 'tomato', 'टमाटर': 'tomato', tamatar: 'tomato', tomate: 'tomato' };
+  const xt = t => XL[t] || t;
 
   function lev(a, b) {
     const m = a.length, n = b.length; if (!m) return n; if (!n) return m;
@@ -121,8 +137,9 @@ const Core = (() => {
     if (a.length > 3 && b.length > 3 && (a.startsWith(b) || b.startsWith(a))) return 0.9;
     return 1 - lev(a, b) / Math.max(a.length, b.length);
   };
-  const toks = s => strip(s).replace(/[^a-z0-9\s]/g, ' ').split(/\s+/)
-    .filter(t => t.length > 1 && !/\d/.test(t) && !STOP.has(t) && !unitOf(t) && !isSaleWord(t) && !isRestockWord(t));
+  const toks = s => strip(s).replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/)
+    .filter(t => t.length > 1 && !/[\d०-९]/.test(t) && !STOP.has(t) && !unitOf(t) && !isSaleWord(t) && !isRestockWord(t))
+    .map(xt);
 
   function matchProduct(query, products) {
     const q = toks(query);
@@ -737,9 +754,14 @@ async function command(text, source) {
     try {
       const r = await gemini([{ text: `You parse voice commands from a grocery shop owner. The command may be in English, Spanish, Hindi (हिन्दी) or Nepali (नेपाली) — including Devanagari script, Devanagari digits (०१२३४५६७८९), and romanized words (chini, bhaat, chamal, chiya, nun, tel, dal). Half = 0.5, quarter = 0.25, "एक पाउ" ≈ 0.5 kg, "आधा किलो" = 0.5 kg, "पाउ" ≈ 0.55 kg if unsure use 0.5. Inventory product names: ${JSON.stringify(S.products.map(p => p.name))}.
 Command: "${text}"
-Return JSON {"items":[{"intent":"sale"|"restock","product": exact inventory name or null (match by meaning across languages: चिनी/cheeni→Sugar, चामल/भात/chamal/bhaat→Rice, चिया→Tea, नुन→Salt, तेल→oil, दाल→lentils),"heard": the owner's words for that item, in the original language,"qty": number,"unit":"kg"|"g"|"L"|"ml"|"unit"|"pack"|"dozen"|null}]} — one entry PER item mentioned, each with ITS OWN intent, because one command can mix them ("rice sold and eggs arrived"). sold/bikri/bikri bhayo/becha/vendí/बिक्री/बेचा = sale; received/arrived/delivery/llegaron/आयो/आए/पसलमा आयो/मंगाएको/खरिद = restock.` }]);
+Return JSON {"items":[{"intent":"sale"|"restock","product": the inventory name copied VERBATIM — never translate, translate-from or shorten it; null only if nothing in the inventory fits (match by meaning across languages: चिनी/cheeni→Sugar, चामल/भात/chamal/bhaat→Rice, चिया→Tea, नुन→Salt, तेल→oil, दाल→lentils),"heard": the owner's words for that item, in the original language,"qty": number,"unit":"kg"|"g"|"L"|"ml"|"unit"|"pack"|"dozen"|null}]} — one entry PER item mentioned, each with ITS OWN intent, because one command can mix them ("rice sold and eggs arrived"). sold/bikri/bikri bhayo/becha/vendí/बिक्री/बेचा = sale; received/arrived/delivery/llegaron/आयो/आए/पसलमा आयो/मंगाएको/खरिद = restock.` }]);
       const defIntent = r.intent === 'restock' ? 'restock' : 'sale';
-      const items = (r.items || []).map(it => { const p = S.products.find(x => x.name === it.product) || (it.product && Core.matchProduct(it.product, S.products).product); return { intent: it.intent === 'restock' ? 'restock' : it.intent === 'sale' ? 'sale' : defIntent, query: it.heard || it.product || '?', qty: +it.qty || 1, unit: it.unit || null, productId: p?.id || null }; });
+      const items = (r.items || []).map(it => {
+        const p = S.products.find(x => x.name === it.product)
+          || (it.product && Core.matchProduct(it.product, S.products).product)
+          || (it.heard && Core.matchProduct(it.heard, S.products).product);
+        return { intent: it.intent === 'restock' ? 'restock' : it.intent === 'sale' ? 'sale' : defIntent, query: it.heard || it.product || '?', qty: +it.qty || 1, unit: it.unit || null, productId: p?.id || null };
+      });
       if (items.length) P = { text, intent: defIntent, items };
     } catch (e) { toast('AI parsing unavailable: ' + e.message, 'warn'); }
     U.voice.busy = false;
