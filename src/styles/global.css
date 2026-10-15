@@ -1069,27 +1069,6 @@ select.f {
 .inrow .f {
   flex: 1;
 }
-.ex {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  justify-content: center;
-  margin-top: 12px;
-}
-.ex button {
-  border: 1px dashed var(--border);
-  background: transparent;
-  color: var(--muted-foreground);
-  border-radius: 999px;
-  padding: 6px 11px;
-  font-size: 11.5px;
-  font-weight: 500;
-  cursor: pointer;
-}
-.ex button:hover {
-  border-color: var(--ring);
-  color: var(--foreground);
-}
 .pi {
   display: grid;
   grid-template-columns: 72px 80px 1fr;
