@@ -190,6 +190,17 @@ textarea:focus-visible {
   gap: 8px;
   min-width: 0;
   padding: 8px 4px 7px;
+  cursor: pointer;
+  border-radius: calc(var(--radius) * 0.9);
+  transition: background 0.15s ease;
+}
+.brand:hover {
+  background: color-mix(in oklab, var(--foreground) 5%, transparent);
+}
+.brand:hover b {
+  text-decoration: underline;
+  text-decoration-color: color-mix(in oklab, var(--foreground) 35%, transparent);
+  text-underline-offset: 3px;
 }
 .logo {
   width: 24px;
@@ -1110,7 +1121,7 @@ select.f {
 /* ---------- nav ---------- */
 .nav {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 4px;
   align-items: end;
 }
@@ -1588,4 +1599,16 @@ select.f {
   font-weight: 700;
   font-family: var(--font-sans);
   flex: 0 0 21px;
+}
+
+/* a bill line for something the shop doesn't carry: flag it loudly */
+.billline.miss {
+  border: 1px solid color-mix(in oklab, var(--warn) 55%, transparent);
+  background: color-mix(in oklab, var(--warn) 8%, transparent);
+}
+.misswarn {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--warn);
+  margin: -2px 0 2px;
 }

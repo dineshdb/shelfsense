@@ -52,7 +52,6 @@ import "../styles/global.css";
       <div class="bt"><b id="storeName">My Grocery Store</b></div>
     </div>
     <nav class="nav">
-      <button data-a="tab" data-v="home"><span>Insights</span></button>
       <button data-a="tab" data-v="scan"><span>Scan</span></button>
       <button data-a="tab" data-v="sell"><span>Sell</span></button>
       <button data-a="tab" data-v="stock"><span>Stock</span></button>
@@ -543,10 +542,11 @@ function vSell() {
     o += `<div class="card"><div class="ch"><h2><span class="ico t-ind">🧾</span>Current bill</h2><button class="btn sm ghost" data-a="billClear">Clear</button></div>
     <div class="list">${v.bill.map((b, i) => { const pr = prod(b.productId);
       const lp = pr && b.intent === 'sale' ? money(+(+Core.convertQty(+b.qty, b.unit || null, pr.unit).toFixed(3) * pr.price).toFixed(2)) : pr ? '+stock' : '—';
-      return `<div class="billline ${b.include ? '' : 'off'}">
+      return `<div class="billline ${b.include ? '' : 'off'} ${b.productId ? '' : 'miss'}">
       <input type="checkbox" ${b.include ? 'checked' : ''} data-bi="${i}" data-bk="include" aria-label="Include this line">
       <div class="bmid">
         <select class="f" data-bi="${i}" data-bk="productId"><option value="">❓ “${esc(b.query)}” — choose</option>${S.products.map(x => `<option value="${x.id}" ${x.id === b.productId ? 'selected' : ''}>${esc(x.name)} (${fq(x.stock, x.unit)})</option>`).join('')}</select>
+        ${b.productId ? '' : '<div class="misswarn">⚠️ Not in inventory — pick a product or it won’t be recorded</div>'}
         <div class="brow"><select class="f" data-bi="${i}" data-bk="intent"><option value="sale" ${b.intent === 'sale' ? 'selected' : ''}>Sold</option><option value="restock" ${b.intent === 'restock' ? 'selected' : ''}>Received</option></select>
           <input class="f" type="number" min="0" step="any" value="${b.qty}" data-bi="${i}" data-bk="qty" aria-label="Quantity">
           <select class="f" data-bi="${i}" data-bk="unit"><option value="">—</option>${UNITS.concat('dozen').map(u => `<option ${u === b.unit ? 'selected' : ''}>${u}</option>`).join('')}</select></div>
@@ -882,9 +882,11 @@ function billApply(print) {
   save();
   if (print) printBill(msgs, total);
   U.voice.bill = []; render();
+  const nMiss = rows.filter(b => !b.productId || !prod(b.productId)).length;
   const head = 'Bill recorded: ' + msgs.map(m => `${fq(m.qty, m.unit)} ${m.name}`).join(', ');
   toast('✅ ' + head + (total ? ' · ' + money(total) : ''), 'ok');
-  [...new Set(alerts)].forEach((a, i) => setTimeout(() => toast('⚠️ ' + a, 'warn', 6500), 350 * (i + 1)));
+  if (nMiss) setTimeout(() => toast(`⚠️ ${nMiss} item${nMiss > 1 ? 's' : ''} not in inventory — skipped. Add them in Stock first, then resell.`, 'warn', 7000), 350);
+  [...new Set(alerts)].forEach((a, i) => setTimeout(() => toast('⚠️ ' + a, 'warn', 6500), 350 * (i + 1 + (nMiss ? 1 : 0))));
   speak(head + '. ' + [...new Set(alerts)].join(' '));
 }
 function printBill(items, total) {
