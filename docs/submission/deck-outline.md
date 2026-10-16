@@ -26,6 +26,9 @@ you what to reorder."
   schema-constrained output, deterministic validation, fuzzy product match with
   Nepali aliases (chini→Sugar, bhat→Rice) behind the model.
 - Composite sentences: "2kg rice, 3 noodles" → two line items, one apply.
+- Receipt intake: one photo of a supplier receipt → delivery lines
+  (qty, unit cost) the owner confirms; stock, cost prices and the ledger
+  update together. Same vision dispatcher, same validation.
 - Every model answer is validated before it touches stock; the model proposes,
   the ledger disposes.
 
@@ -33,8 +36,9 @@ you what to reorder."
 
 Single Astro/Vite page → Firebase Hosting; anonymous auth + Firestore sync
 (newest-wins merge, live onSnapshot); swappable AI dispatcher (Gemini native ↔
-local OpenAI-compatible); deterministic fallback parser keeps the store usable
-when the model is unreachable.
+local OpenAI-compatible); model output is normalized and validated by unit-
+tested pure functions before it touches stock; the advisor alone keeps a
+built-in offline fallback.
 
 ## 6. Why it's different (Innovation 25)
 
@@ -55,8 +59,8 @@ runs on a decade-old phone browser; data per device, exportable.
 
 ## 9. Roadmap
 
-Receipt-scan intake (vision), voice-native flow, Nepali ASR, multi-store
-roll-ups, supplier reorder drafts.
+Voice-native flow, Nepali ASR, multi-store roll-ups, supplier reorder
+drafts. (Receipt-scan intake shipped — see slide 4.)
 
 ## 10. What's built today
 

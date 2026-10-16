@@ -1,9 +1,21 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Each anonymous device-user owns exactly their own state doc.
+    // One anonymous device-user, one state doc. Writes are validated so the
+    // open anonymous auth can't be used as free storage: fixed field set,
+    // list-size caps, and the Gemini key must never leave the device.
+    function validState(d) {
+      return d.keys().hasOnly(['products', 'moves', 'settings', 'savedAt'])
+        && d.savedAt is number
+        && d.products is list && d.products.size() <= 2000
+        && d.moves is list && d.moves.size() <= 20000
+        && d.settings is map
+        && !d.settings.keys().hasAny(['apiKey']);
+    }
     match /users/{uid} {
-      allow read, write: if request.auth != null && request.auth.uid == uid;
+      allow read, delete: if request.auth != null && request.auth.uid == uid;
+      allow create, update: if request.auth != null && request.auth.uid == uid
+        && validState(request.resource.data);
     }
   }
 }

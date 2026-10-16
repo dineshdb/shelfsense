@@ -1,10 +1,12 @@
 # ShelfSense AI — your AI store employee
 
 The AI-powered smart retail assistant (AI Builder Cup 2026, Retail &
-Commerce): **shelf scanning** (Gemini Vision / on-device COCO-SSD),
-**voice sales** with composite sentences ("2kg rice, 3 noodles" → two line
-items), **AI reorder forecasting**, an **AI business advisor**, and full
-**inventory management** — as one client-rendered page on Firebase.
+Commerce): **shelf scanning** (Gemini Vision or local Gemma vision),
+**receipt intake** (photograph a supplier receipt → editable delivery
+lines → stock, cost prices and ledger), **voice sales** with composite
+sentences ("2kg rice, 3 noodles" → two line items), **AI reorder
+forecasting**, an **AI business advisor**, and full **inventory
+management** — as one client-rendered page on Firebase.
 
 Speaks English, Spanish, Hindi (हिन्दी) and Nepali (नेपाली) — Devanagari
 script, Devanagari digits and romanized words all parse, and product
@@ -27,9 +29,11 @@ The app opens with a setup wizard:
 
 One dispatcher fronts both backends — vision shelf scans, voice-command
 parsing and the business advisor all follow the setting — and it's
-swappable anytime in Settings. Skippable entirely: on-device COCO-SSD
-detection and a deterministic parser keep the store working with no AI at
-all. Gemma keeps the cup's "Gemini or Gemma" rule honest either way.
+swappable anytime in Settings. The model proposes, code disposes: every
+answer is normalized and validated in pure, unit-tested functions before
+it touches stock, and if the model is unreachable the advisor falls back
+to built-in arithmetic. Gemma keeps the cup's "Gemini or Gemma" rule
+honest either way.
 
 ### The one-port local mode (recommended for local Gemma)
 
@@ -70,6 +74,20 @@ hosting + security rules, and verifies the live URL.
 One manual step on free (Spark) projects: first-time **Authentication →
 Get started → Anonymous → Enable** in the console (the API gate for
 first-time activation requires billing; the click doesn't).
+
+### Autodeploy on push (GitHub Actions)
+
+Every push to `main` builds and deploys hosting + Firestore rules, then
+smoke-checks the live URL (`.github/workflows/deploy.yml`; also runnable
+by hand via workflow_dispatch). One-time credential wiring — creates the
+dedicated `shelfsense-deploy` service account, grants it Hosting + Rules
+admin, and rotates its key into the
+`FIREBASE_SERVICE_ACCOUNT_SHELFSENSE_DF2265` repo secret. Reuses the
+firebase-tools session from above; needs `gh` logged in:
+
+    ./scripts/setup-ci-deploy.sh
+
+Re-running it rotates the key.
 
 ### Manual path
 

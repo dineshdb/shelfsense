@@ -13,12 +13,21 @@ import { join, extname, normalize } from "node:path";
 const UPSTREAM = "127.0.0.1:8282";
 const PORT = process.env.SHELFSENSE_SHIM_PORT || 8283;
 const DIST = fileURLToPath(new URL("../dist/", import.meta.url));
-const CORS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  "Access-Control-Allow-Headers": "content-type, authorization",
-  "Access-Control-Allow-Private-Network": "true",
-  "Access-Control-Max-Age": "86400",
+// Only localhost origins may read from the local AI — a blanket `*` would
+// let any website in the browser use (and read from) your model while the
+// shim runs.
+const LOCAL_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
+const corsHeaders = (req) => {
+  const h = {
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers": "content-type, authorization",
+    "Access-Control-Allow-Private-Network": "true",
+    "Access-Control-Max-Age": "86400",
+    Vary: "Origin",
+  };
+  const origin = req.headers.origin;
+  if (origin && LOCAL_ORIGIN.test(origin)) h["Access-Control-Allow-Origin"] = origin;
+  return h;
 };
 const TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -43,14 +52,14 @@ function forward(req, res, body) {
     },
     (ur) => {
       res.writeHead(ur.statusCode || 502, {
-        ...CORS,
+        ...corsHeaders(req),
         "content-type": ur.headers["content-type"] || "application/json",
       });
       ur.pipe(res);
     },
   );
   up.on("error", (e) => {
-    res.writeHead(502, { ...CORS, "content-type": "application/json" });
+    res.writeHead(502, { ...corsHeaders(req), "content-type": "application/json" });
     res.end(JSON.stringify({ error: { message: "merve unreachable: " + e.message } }));
   });
   if (body?.length) up.write(body);
@@ -82,7 +91,7 @@ async function serveFile(res, urlPath) {
 
 const server = http.createServer((req, res) => {
   if (req.method === "OPTIONS") {
-    res.writeHead(204, CORS);
+    res.writeHead(204, corsHeaders(req));
     res.end();
     return;
   }

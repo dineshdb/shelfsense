@@ -7,7 +7,7 @@ import "../styles/global.css";
 <html lang="en">
   <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#ffffff">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
@@ -49,7 +49,8 @@ import "../styles/global.css";
   <div class="appbar">
     <div class="brand" data-a="tab" data-v="home" title="Home">
       <div class="logo" id="logo"></div>
-      <div class="bt"><b id="storeName">My Grocery Store</b></div>
+      <div class="bt"><b id="storeName">My Grocery Store</b>
+        <span class="bp"><span class="pill off" id="enginePill"><i></i>AI off</span><span class="pill off" id="cloudPill" style="display:none"><i></i></span></span></div>
     </div>
     <nav class="nav">
       <button data-a="tab" data-v="scan"><span>Scan</span></button>
@@ -71,186 +72,9 @@ import "../styles/global.css";
       // window.__firebase door the app's sync engine reads.
       import { initializeApp, getApps } from "firebase/app";
       import { getAuth, signInAnonymously, onAuthStateChanged } from "firebase/auth";
-      import { getFirestore, doc, getDoc, setDoc, onSnapshot } from "firebase/firestore";
-      window.__firebase = { initializeApp, getAuth, signInAnonymously, onAuthStateChanged, getFirestore, doc, getDoc, setDoc, onSnapshot };
-
-/* ===== ShelfSense Core: voice parsing, product matching, analytics (pure functions) ===== */
-const Core = (() => {
-  const DAY = 864e5;
-  const strip = s => (s || '').toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-  const NUM = { a: 1, an: 1, one: 1, un: 1, uno: 1, una: 1, two: 2, dos: 2, three: 3, tres: 3, four: 4, cuatro: 4,
-    five: 5, cinco: 5, six: 6, seis: 6, seven: 7, siete: 7, eight: 8, ocho: 8, nine: 9, nueve: 9, ten: 10, diez: 10,
-    eleven: 11, once: 11, twelve: 12, doce: 12, fifteen: 15, quince: 15, twenty: 20, veinte: 20, thirty: 30, treinta: 30,
-    fifty: 50, cincuenta: 50, hundred: 100, cien: 100, half: 0.5, medio: 0.5, media: 0.5, quarter: 0.25, cuarto: 0.25,
-    couple: 2, par: 2 };
-  const UNIT_RULES = [
-    [/^(kilograms?|kilos?|kgs?|kilogramos?)$/, 'kg'],
-    [/^(grams?|grammes?|g|gr|grs|gramos?)$/, 'g'],
-    [/^(liters?|litres?|l|lts?|litros?)$/, 'L'],
-    [/^(milliliters?|millilitres?|ml|mililitros?)$/, 'ml'],
-    [/^(packs?|packets?|packages?|paquetes?|bags?|bolsas?|boxes?|cajas?)$/, 'pack'],
-    [/^(units?|pieces?|pcs|unidades?|bottles?|botellas?|cans?|latas?|loaves|loaf|bars?|barras?)$/, 'unit'],
-    [/^(dozens?|docenas?)$/, 'dozen']
-  ];
-  const SALE = new Set(['sold', 'sell', 'sells', 'selling', 'sale', 'sales', 'vendi', 'vendio', 'vendido', 'vendida',
-    'vendidos', 'vendidas', 'vendimos', 'venta', 'vender', 'vende']);
-  const RESTOCK = new Set(['received', 'receive', 'restock', 'restocked', 'added', 'add', 'arrived', 'delivered',
-    'delivery', 'recibi', 'recibimos', 'llegaron', 'llego', 'compre', 'compramos', 'agregar', 'agrega', 'agregue',
-    'reponer', 'repuse', 'entrada', 'ingreso']);
-  const STOP = new Set(['of', 'de', 'del', 'the', 'el', 'la', 'los', 'las', 'i', 'we', 'yo', 'just', 'have', 'has',
-    'been', 'was', 'were', 'se', 'please', 'por', 'favor', 'for', 'to', 'customer', 'cliente', 'today', 'hoy', 'more',
-    'mas', 'stock', 'inventory', 'inventario', 'some', 'unos', 'unas', 'que', 'and', 'y', 'with', 'con', 'en', 'in',
-    'it', 'is', 'are', 'my', 'mi', 'al', 'lo', 'le', 'les', 'item', 'items', 'product', 'producto', 'plushalf']);
-
-  const unitOf = tok => { for (const [re, u] of UNIT_RULES) if (re.test(tok)) return u; return null; };
-  const isSaleWord = w => SALE.has(w);
-  const isRestockWord = w => RESTOCK.has(w);
-  // Cross-language product words → canonical English token, so a Hindi/Nepali
-  // answer ("दूध", "चिनी", "अन्डा") can land on the inventory entry.
-  const XL = { chini: 'sugar', cheeni: 'sugar', 'चिनी': 'sugar', 'चीनी': 'sugar', 'शक्खर': 'sugar', shakkar: 'sugar',
-    chamal: 'rice', 'चामल': 'rice', chawal: 'rice', 'चावल': 'rice', bhaat: 'rice', 'भात': 'rice',
-    doodh: 'milk', dudh: 'milk', 'दूध': 'milk', 'दुध': 'milk', leche: 'milk',
-    'अन्डा': 'egg', 'अंडा': 'egg', 'अंडे': 'egg', 'अन्डे': 'egg', anda: 'egg', ande: 'egg', huevo: 'egg', huevos: 'egg',
-    'ब्रेड': 'bread', 'पाउरोटी': 'bread', pauroti: 'bread',
-    chiya: 'tea', 'चिया': 'tea', chai: 'tea', 'चाय': 'tea', te: 'tea',
-    nun: 'salt', 'नुन': 'salt', 'नमक': 'salt', namak: 'salt', sal: 'salt',
-    tel: 'oil', 'तेल': 'oil', aceite: 'oil',
-    dal: 'lentils', 'दाल': 'lentils', lenteja: 'lentils',
-    'कोका': 'cola', koka: 'cola', 'कोकाकोला': 'cola', gaseosa: 'cola',
-    kera: 'banana', 'केरा': 'banana', kela: 'banana', 'केला': 'banana', banana: 'banana', platano: 'banana',
-    aloo: 'tomato', alu: 'tomato', 'आलु': 'potato', 'आलू': 'potato', patata: 'potato',
-    golbheda: 'tomato', 'गोलभेडा': 'tomato', 'टमाटर': 'tomato', tamatar: 'tomato', tomate: 'tomato' };
-  const xt = t => XL[t] || t;
-
-  function lev(a, b) {
-    const m = a.length, n = b.length; if (!m) return n; if (!n) return m;
-    let prev = Array.from({ length: n + 1 }, (_, j) => j);
-    for (let i = 1; i <= m; i++) {
-      const cur = [i];
-      for (let j = 1; j <= n; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
-      prev = cur;
-    }
-    return prev[n];
-  }
-  const sim = (a, b) => {
-    if (a === b) return 1;
-    if (a.length > 3 && b.length > 3 && (a.startsWith(b) || b.startsWith(a))) return 0.9;
-    return 1 - lev(a, b) / Math.max(a.length, b.length);
-  };
-  const toks = s => strip(s).replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/)
-    .filter(t => t.length > 1 && !/[\d०-९]/.test(t) && !STOP.has(t) && !unitOf(t) && !isSaleWord(t) && !isRestockWord(t))
-    .map(xt);
-
-  function matchProduct(query, products) {
-    const q = toks(query);
-    if (!q.length || !products.length) return { product: null, score: 0 };
-    let best = null, bestScore = 0;
-    for (const p of products) {
-      for (const cand of [p.name, ...(p.aliases || [])]) {
-        const c = toks(cand); if (!c.length) continue;
-        const recall = q.reduce((s, t) => s + Math.max(...c.map(x => sim(t, x))), 0) / q.length;
-        const prec = c.reduce((s, t) => s + Math.max(...q.map(x => sim(t, x))), 0) / c.length;
-        const sc = 0.65 * recall + 0.35 * prec;
-        if (sc > bestScore) { bestScore = sc; best = p; }
-      }
-    }
-    return bestScore >= 0.62 ? { product: best, score: bestScore } : { product: null, score: bestScore, suggestion: best };
-  }
-
-  function convertQty(qty, said, pu) {
-    if (!said || said === pu) return qty;
-    if (said === 'dozen') return pu === 'unit' ? qty * 12 : qty;
-    if (said === 'g' && pu === 'kg') return qty / 1000;
-    if (said === 'kg' && pu === 'g') return qty * 1000;
-    if (said === 'ml' && pu === 'L') return qty / 1000;
-    if (said === 'L' && pu === 'ml') return qty * 1000;
-    return qty;
-  }
-
-  function parseCommand(text, products) {
-    let t = ' ' + strip(text) + ' ';
-    t = t.replace(/(\d)\s*\/\s*(\d)/g, (m, a, b) => ' ' + (Number(a) / Number(b)) + ' ');
-    t = t.replace(/(\d),(\d)/g, '$1.$2').replace(/(\d)([a-z])/g, '$1 $2');
-    t = t.replace(/\b(and a half|and half|y medio|y media)\b/g, ' plushalf ');
-    t = t.replace(/[^a-z0-9.,;\s]/g, ' ');
-    const all = t.replace(/[,;]/g, ' ').split(/\s+/).map(w => w.replace(/^\.+|\.+$/g, '')).filter(Boolean);
-    const hasSale = all.some(isSaleWord), hasRestock = all.some(isRestockWord);
-    const intent = hasRestock && !hasSale ? 'restock' : 'sale';
-    const segments = t.split(/\s(?:and|y|plus|also|tambien)\s|[,;]/);
-    const items = [];
-    for (const seg of segments) {
-      const words = seg.split(/\s+/).map(w => w.replace(/^\.+|\.+$/g, '')).filter(Boolean);
-      let qty = null, unit = null, half = false; const name = [];
-      for (const w of words) {
-        if (isSaleWord(w) || isRestockWord(w)) continue;
-        if (w === 'plushalf') { half = true; continue; }
-        if (/^\d+(\.\d+)?$/.test(w)) { if (qty === null) qty = parseFloat(w); continue; }
-        if (NUM[w] !== undefined) { if (qty === null) qty = NUM[w]; continue; }
-        const u = unitOf(w);
-        if (u) { if (!unit) unit = u; continue; }
-        if (STOP.has(w)) continue;
-        name.push(w);
-      }
-      if (!name.length) continue;
-      if (qty === null) qty = 1;
-      if (half) qty += 0.5;
-      const query = name.join(' ');
-      const m = matchProduct(query, products);
-      items.push({ raw: seg.trim(), query, qty, unit, productId: m.product ? m.product.id : null,
-        productName: m.product ? m.product.name : null, score: +m.score.toFixed(2),
-        suggestionId: m.suggestion ? m.suggestion.id : null });
-    }
-    return { text, intent, items };
-  }
-
-  function dailySeries(moves, days, now = Date.now()) {
-    const start = new Date(now); start.setHours(0, 0, 0, 0);
-    const out = [];
-    for (let i = days - 1; i >= 0; i--) {
-      const d0 = start.getTime() - i * DAY, d1 = d0 + DAY;
-      const rev = moves.filter(m => m.type === 'sale' && m.ts >= d0 && m.ts < d1).reduce((s, m) => s + (m.total || 0), 0);
-      out.push({ label: new Date(d0).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }), value: +rev.toFixed(2) });
-    }
-    return out;
-  }
-
-  function analyze(products, moves, s, now = Date.now()) {
-    const sales = moves.filter(m => m.type === 'sale');
-    const first = sales.length ? Math.min(...sales.map(m => m.ts)) : now;
-    const windowDays = Math.max(1, Math.min(s.windowDays || 28, Math.floor((now - first) / DAY) + 1));
-    const lead = +s.leadDays || 0, cover = +s.coverDays || 0, safety = +s.safetyDays || 0;
-    const rows = products.map(p => {
-      const ps = sales.filter(m => m.productId === p.id);
-      const win = ps.filter(m => m.ts >= now - windowDays * DAY);
-      const last7 = ps.filter(m => m.ts >= now - 7 * DAY);
-      const sold = win.reduce((a, m) => a + m.qty, 0);
-      const qty7 = last7.reduce((a, m) => a + m.qty, 0);
-      const rev7 = last7.reduce((a, m) => a + (m.total || 0), 0);
-      const revWin = win.reduce((a, m) => a + (m.total || 0), 0);
-      const avgDaily = sold / windowDays;
-      const recentDaily = qty7 / Math.min(7, windowDays);
-      const daysLeft = avgDaily > 0 ? p.stock / avgDaily : Infinity;
-      const lastSale = ps.length ? Math.max(...ps.map(m => m.ts)) : null;
-      const rop = (p.minStock !== null && p.minStock !== undefined && p.minStock !== '') ? +p.minStock : avgDaily * (lead + safety);
-      const target = avgDaily * (lead + cover + safety);
-      let reorderQty = Math.max(0, target - p.stock);
-      reorderQty = p.unit === 'kg' || p.unit === 'L' ? Math.ceil(reorderQty) : Math.ceil(reorderQty);
-      let status = 'ok';
-      if (p.stock <= 0) status = 'out';
-      else if (p.stock <= rop && (avgDaily > 0 || rop > 0)) status = 'low';
-      else if ((!lastSale || now - lastSale > 14 * DAY) || (avgDaily > 0 && daysLeft > 60)) status = 'slow';
-      if ((status === 'low' || status === 'out') && reorderQty === 0) reorderQty = Math.max(1, Math.ceil(rop - p.stock + 1));
-      const trend = avgDaily > 0 ? (recentDaily - avgDaily) / avgDaily : 0;
-      return { id: p.id, p, sold, qty7, rev7, revWin, avgDaily, recentDaily, daysLeft, lastSale, rop, reorderQty,
-        status, trend, reorderCost: reorderQty * (p.cost || p.price * 0.75 || 0) };
-    });
-    return { windowDays, rows };
-  }
-
-  return { strip, matchProduct, parseCommand, convertQty, analyze, dailySeries, sim };
-})();
-
-
+      import { getFirestore, doc, getDoc, onSnapshot, runTransaction } from "firebase/firestore";
+      import { Core } from "../core";
+      window.__firebase = { initializeApp, getAuth, signInAnonymously, onAuthStateChanged, getFirestore, doc, getDoc, onSnapshot, runTransaction };
 
 /* ===== ShelfSense AI v2 — dependency-free UI ===== */
 (() => {
@@ -260,9 +84,8 @@ const uid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(3
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const CAT = { Produce: '🥬', Fruits: '🍌', Vegetables: '🥕', Dairy: '🥛', Bakery: '🍞', Beverages: '🥤', Grains: '🌾', Pantry: '🥫', Snacks: '🍪', Household: '🧴', 'Personal Care': '🧼', Meat: '🥩', Frozen: '🧊', Other: '📦' };
 const NAME_EMOJI = [[/sugar|azucar/, '🍬'], [/rice|arroz/, '🍚'], [/milk|leche/, '🥛'], [/bread|\bpan\b/, '🍞'], [/egg|huevo/, '🥚'], [/oil|aceite/, '🫗'], [/cola|coke|soda/, '🥤'], [/banana|banano/, '🍌'], [/tomato|tomate/, '🍅'], [/pasta|spaghetti/, '🍝'], [/coffee|cafe/, '☕'], [/soap|jabon/, '🧼'], [/salt|\bsal\b/, '🧂'], [/bean|frijol/, '🫘'], [/apple|manzana/, '🍎'], [/orange|naranja/, '🍊'], [/water|agua/, '💧'], [/cheese|queso/, '🧀'], [/chicken|pollo/, '🍗'], [/carrot|zanahoria/, '🥕'], [/broccoli/, '🥦'], [/beer|cerveza/, '🍺'], [/chip|snack/, '🍟']];
-const COCO = { bottle: ['Bottled drink', 'Beverages'], banana: ['Bananas', 'Fruits'], apple: ['Apples', 'Fruits'], orange: ['Oranges', 'Fruits'], broccoli: ['Broccoli', 'Vegetables'], carrot: ['Carrots', 'Vegetables'], sandwich: ['Sandwich', 'Bakery'], donut: ['Donuts', 'Bakery'], cake: ['Cake', 'Bakery'], cup: ['Cup', 'Household'], bowl: ['Bowl', 'Household'], book: ['Notebook', 'Other'], scissors: ['Scissors', 'Household'], toothbrush: ['Toothbrush', 'Personal Care'] };
 const UNITS = ['unit', 'kg', 'g', 'L', 'ml', 'pack'];
-const DEF = { storeName: 'My Grocery Store', currency: '$', apiKey: '', model: 'gemini-2.5-flash', aiMode: 'gemini', aiBaseUrl: '', aiModel: 'gemma-4-e4b', setupDone: false, engine: 'auto', lang: 'en-US', autoApply: true, speak: true, leadDays: 3, coverDays: 7, safetyDays: 2, windowDays: 28 };
+const DEF = { storeName: 'My Grocery Store', currency: '$', apiKey: '', model: 'gemini-2.5-flash', aiMode: 'gemini', aiBaseUrl: '', aiModel: 'gemma-4-e4b', setupDone: false, lang: 'en-US', autoApply: true, speak: true, leadDays: 3, coverDays: 7, safetyDays: 2, windowDays: 28 };
 const I = {
   logo: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h2l2.4 11.2a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 2-1.5L21 8H6.2"/><circle cx="10" cy="20.5" r="1.3"/><circle cx="17" cy="20.5" r="1.3"/><path d="M12 8.5l1 2 2 .4-1.5 1.4.4 2-1.9-1-1.9 1 .4-2-1.5-1.4 2-.4z" fill="currentColor" stroke="none"/></svg>',
   home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg>',
@@ -278,18 +101,18 @@ const I = {
 /* ---------- state ---------- */
 let saved = {}; try { saved = JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) {}
 const S = { products: saved.products || [], moves: saved.moves || [], settings: Object.assign({}, DEF, saved.settings || {}) };
-const U = { tab: 'home', scan: { image: null, dets: [], busy: false, status: '', camOn: false, live: false, engine: '' },
-  voice: { listening: false, transcript: '', busy: false, bill: [], live: false, recording: false, rec: null }, inv: { q: '', cat: 'All', sort: 'name' }, ai: { busy: false, text: '' }, setup: { mode: 'gemini', busy: false, msg: '' }, edit: null };
-let stream = null, coco = null, liveTimer = null, rec = null;
-const save = () => {
+const U = { tab: 'home', scan: { image: null, dets: [], busy: false, status: '', camOn: false, engine: '', mode: 'shelf', rcpt: null },
+  voice: { transcript: '', busy: false, bill: [], recording: false, rec: null }, inv: { q: '', cat: 'All', sort: 'name' }, ai: { busy: false, text: '' }, setup: { mode: 'gemini', busy: false, msg: '' }, edit: null };
+let stream = null;
+const save = (cloud = true) => {
   S.savedAt = Date.now();
   try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { toast('Storage full — export your data', 'err'); }
-  if (window.__cloudPut) window.__cloudPut();
+  if (cloud && window.__cloudPut) window.__cloudPut();
 };
 
 /* ---------- helpers ---------- */
 const set = () => S.settings;
-const money = n => set().currency + (Number(n) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const money = n => esc(set().currency) + (Number(n) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fq = (q, unit, dec) => {
   if (!isFinite(q)) return '–';
   const d = dec !== undefined ? dec : (unit === 'kg' || unit === 'L' ? 2 : 1);
@@ -308,7 +131,6 @@ function speak(msg) {
   if (!set().speak || !window.speechSynthesis) return;
   try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(msg); u.lang = set().lang; u.rate = 1.05; speechSynthesis.speak(u); } catch (e) {}
 }
-function loadScript(src) { return new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('Could not download the on-device model (offline?)')); document.head.appendChild(s); }); }
 const fileToURL = f => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(f); });
 const resize = (src, max = 1280) => new Promise((res, rej) => { const im = new Image(); im.onload = () => { const k = Math.min(1, max / Math.max(im.width, im.height)); const c = document.createElement('canvas'); c.width = Math.round(im.width * k); c.height = Math.round(im.height * k); c.getContext('2d').drawImage(im, 0, 0, c.width, c.height); res(c.toDataURL('image/jpeg', .85)); }; im.onerror = () => rej(new Error('Could not read image')); im.src = src; });
 function drawBoxes(cv, w, h, dets) {
@@ -346,6 +168,10 @@ const A = () => Core.analyze(S.products, S.moves, set());
      AI Builder Cup eligible (Gemini OR Gemma). */
 const aiReady = () => (set().aiMode === 'custom' && set().aiBaseUrl) || !!set().apiKey;
 const aiLabel = () => set().aiMode === 'custom' && set().aiBaseUrl ? `Local ${set().aiModel}` : 'Gemini AI';
+// AI calls always carry a deadline, so a hung backend can never leave a busy
+// spinner stuck (scan overlay, bill parse, advisor).
+const fetchT = (url, opts, ms = 60000) => fetch(url, { ...opts, signal: AbortSignal.timeout(ms) })
+  .catch(e => { throw new Error(e && (e.name === 'TimeoutError' || /timed?\s?out/i.test(e.message || '')) ? 'AI backend timed out — try again' : (e.message || String(e))); });
 async function aiCustom(parts, json = true) {
   const base = set().aiBaseUrl.replace(/\/+$/, '').replace(/\/v1\/?$/, '');
   const content = [];
@@ -356,7 +182,7 @@ async function aiCustom(parts, json = true) {
     else text += (p && p.text || String(p ?? '')) + '\n';
   }
   content.unshift({ type: 'text', text: text.trim() + (json ? '\nAnswer ONLY with JSON. No prose, no code fences.' : '') });
-  const r = await fetch(base + '/v1/chat/completions', {
+  const r = await fetchT(base + '/v1/chat/completions', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ model: set().aiModel, temperature: json ? 0.2 : 0.5, messages: [{ role: 'user', content }] }),
   });
@@ -373,7 +199,7 @@ async function gemini(parts, json = true) {
   if (set().aiMode === 'custom' && set().aiBaseUrl) return aiCustom(parts, json);
   if (!set().apiKey) throw new Error('No AI backend configured');
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(set().model)}:generateContent?key=${encodeURIComponent(set().apiKey)}`;
-  const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ role: 'user', parts }], generationConfig: json ? { responseMimeType: 'application/json', temperature: .2 } : { temperature: .5 } }) });
+  const r = await fetchT(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ role: 'user', parts }], generationConfig: json ? { responseMimeType: 'application/json', temperature: .2 } : { temperature: .5 } }) });
   if (!r.ok) { let m = 'HTTP ' + r.status; try { m = (await r.json()).error.message; } catch (e) {} throw new Error('Gemini: ' + m); }
   const d = await r.json(); const t = (d.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('');
   return json ? JSON.parse(t.replace(/```json|```/g, '').trim()) : t.trim();
@@ -431,7 +257,7 @@ function vSetup() {
       </div>
       <div class="muted small" style="margin-top:-4px">Both are yours to change anytime in Settings.</div>
       <div class="g2 mt2"><button class="btn pri" data-a="setupTest" ${st.busy ? 'disabled' : ''}>${st.busy ? 'Testing…' : 'Test & continue'}</button>
-        <button class="btn ghost" data-a="setupSkip">Skip — on-device only</button></div>
+        <button class="btn ghost" data-a="setupSkip">Skip for now</button></div>
       ${st.msg ? `<div class="muted small mt" style="color:var(--bad)">${esc(st.msg)}</div>` : ''}
     </div></div>`;
 }
@@ -492,44 +318,53 @@ function chart(s) {
   return g + '</svg>';
 }
 function vScan() {
-  const sc = U.scan, useG = set().engine === 'gemini' || (set().engine === 'auto' && aiReady());
-  let o = `<div class="scangrid"><div class="card"><div class="ch"><h2><span class="ico t-ok">📸</span>Scan the store</h2><span class="sub">${useG ? 'Gemini Vision' : 'On-device AI'}</span></div>
+  const sc = U.scan, rcpt = sc.mode === 'rcpt', ready = aiReady(), gate = !ready;
+  let o = `<div class="scangrid"><div class="card"><div class="ch"><h2><span class="ico t-ok">${rcpt ? '🧾' : '📸'}</span>${rcpt ? 'Log a delivery' : 'Scan the store'}</h2><span class="sub">${ready ? aiLabel() : 'Needs AI'}</span></div>
+  <div class="chips" style="margin-top:0">${[['shelf', '🧺 Shelf'], ['rcpt', '🧾 Receipt']].map(([v, l]) => `<button class="chip ${sc.mode === v ? 'on' : ''}" data-a="scanmode" data-v="${v}">${l}</button>`).join('')}</div>
   <div class="viewer">
-    ${sc.camOn && !sc.image ? `<video id="video" playsinline muted autoplay></video><canvas id="liveCv"></canvas><span class="corner c1"></span><span class="corner c2"></span><span class="corner c3"></span><span class="corner c4"></span>${sc.live ? '' : '<div class="laser"></div>'}` : ''}
+    ${sc.camOn && !sc.image ? `<video id="video" playsinline muted autoplay></video><span class="corner c1"></span><span class="corner c2"></span><span class="corner c3"></span><span class="corner c4"></span><div class="laser"></div>` : ''}
     ${sc.image ? `<img id="shot" src="${sc.image}"><canvas id="shotCv"></canvas>` : ''}
-    ${!sc.camOn && !sc.image ? `<div class="ph"><div class="scanico">${I.scan}</div><b style="font-size:14.5px">Point at a shelf</b><br>Use the live camera or a photo.</div>` : ''}
+    ${!sc.camOn && !sc.image ? `<div class="ph"><div class="scanico">${I.scan}</div><b style="font-size:14.5px">${rcpt ? 'Point at a supplier receipt' : 'Point at a shelf'}</b><br>${rcpt ? 'Photograph what just arrived — the lines land as a delivery you confirm.' : 'Use the live camera or a photo.'}</div>` : ''}
     ${sc.busy ? `<div class="busy"><div><div class="spin"></div>${esc(sc.status)}</div></div>` : ''}
   </div>`;
-  o += !sc.camOn ? `<div class="g2 mt"><button class="btn pri" data-a="cam">🎥 Live camera</button><button class="btn sec" data-a="pick" data-v="photoIn">🖼️ Photos</button></div>`
+  o += !sc.camOn ? `<div class="g2 mt"><button class="btn pri" data-a="cam" ${gate ? 'disabled' : ''}>🎥 Live camera</button><button class="btn sec" data-a="pick" data-v="photoIn" ${gate ? 'disabled' : ''}>🖼️ ${rcpt ? 'Receipt photo' : 'Photos'}</button></div>`
     : `<div class="g3 mt"><button class="btn pri" data-a="capture">◉ Capture</button><button class="btn ghost" data-a="camoff">✕ Close</button></div>`;
-  if (sc.image && !sc.busy) o += `<button class="btn ghost w mt" data-a="rescan">↺ Scan again</button>`;
-  if (sc.live) o += `<div class="muted small mt">Live mode runs on-device and recognizes generic items (bottles, fruit, vegetables). Tap Capture for full product recognition${aiReady() ? ' with ' + aiLabel() : ''}.</div>`;
+  if (gate) o += `<div class="muted small mt">Scanning needs an AI backend — configure Gemini or your local server in Settings.</div>`;
+  if (sc.image && !sc.busy) o += `<button class="btn ghost w mt" data-a="rescan">↺ ${rcpt ? 'Read another receipt' : 'Scan again'}</button>`;
   o += `</div>`;
-  if (!sc.dets.length && !sc.busy) o += `<div class="card"><div class="ch"><h2><span class="ico t-info">🔎</span>Found products</h2></div>
-    <div class="empty"><span class="e">🔍</span>Capture a shelf and everything the AI recognizes lands here — check names, quantities and prices, then save to inventory.</div>
-    <div class="muted small mt">Use <b>Live camera</b> for a real shelf, or <b>Photos</b> to upload shots. Detection runs ${useG ? 'with ' + aiLabel() : 'fully on-device'}.</div></div>`;
-  if (sc.dets.length) o += `<div class="card"><div class="ch"><h2><span class="ico t-info">🔎</span>${sc.dets.length} products found</h2><span class="sub">${esc(sc.engine)}</span></div>
-    <div class="muted small" style="margin:-4px 0 10px">Check names, quantities and prices, then save to inventory.</div><div class="list">${sc.dets.map((d, i) => `
+  if (!sc.dets.length && !sc.busy) o += `<div class="card"><div class="ch"><h2><span class="ico t-info">${rcpt ? '🧾' : '🔎'}</span>${rcpt ? 'Delivery lines' : 'Found products'}</h2></div>
+    ${rcpt ? `<div class="empty"><span class="e">🧾</span>Photograph the supplier receipt and every line the AI reads lands here — check products, quantities and unit costs, then log the delivery.</div>
+    <div class="muted small mt">Costs update each product's cost price; new items start at a sell price of ~1.35× cost. Everything enters the ledger as a delivery.</div>`
+    : `<div class="empty"><span class="e">🔍</span>Capture a shelf and everything the AI recognizes lands here — check names, quantities and prices, then save to inventory.</div>
+    <div class="muted small mt">Use <b>Live camera</b> for a real shelf, or <b>Photos</b> to upload shots. Detection runs with ${aiLabel()}.</div>`}</div>`;
+  if (sc.dets.length) {
+    const sum = sc.dets.filter(d => d.include).reduce((s, d) => s + (+d.count || 0) * (+d.cost || 0), 0);
+    const totOk = sc.rcpt && sc.rcpt.total != null && Math.abs(sum - sc.rcpt.total) <= Math.max(1, sc.rcpt.total * 0.02);
+    o += `<div class="card"><div class="ch"><h2><span class="ico t-info">${rcpt ? '🧾' : '🔎'}</span>${sc.dets.length} ${rcpt ? 'delivery line' + (sc.dets.length > 1 ? 's' : '') : 'products found'}</h2><span class="sub">${esc(sc.engine)}</span></div>
+    ${rcpt && sc.rcpt && (sc.rcpt.store || sc.rcpt.total != null) ? `<div class="muted small" style="margin:-4px 0 6px">${sc.rcpt.store ? esc(sc.rcpt.store) + ' · ' : ''}${sc.rcpt.date ? esc(sc.rcpt.date) + ' · ' : ''}${sc.rcpt.total != null ? `receipt total ${money(sc.rcpt.total)} · lines add up to <b style="color:${totOk ? 'var(--ok)' : 'var(--warn)'}">${money(sum)}</b>` : ''}</div>` : ''}
+    <div class="muted small" style="margin:-4px 0 10px">${rcpt ? 'Check products, quantities and unit costs, then log the delivery.' : 'Check names, quantities and prices, then save to inventory.'}</div><div class="list">${sc.dets.map((d, i) => `
     <div class="det"><input type="checkbox" data-det="${i}" data-k="include" ${d.include ? 'checked' : ''}><div>
       <input class="f" style="font-weight:700" value="${esc(d.name)}" data-det="${i}" data-k="name">
       <div class="flex mt small" style="flex-wrap:wrap;gap:6px"><span class="badge ${d.matchId ? 'b-ok' : 'b-new'}">${d.matchId ? 'Updates ' + esc(prod(d.matchId)?.name || '') : 'New product'}</span>
-      ${d.confidence ? `<span class="muted small">${Math.round(d.confidence * 100)}% confidence</span>` : ''}<span class="muted small">${esc(d.category)}</span></div>
+      ${d.confidence ? `<span class="muted small">${Math.round(d.confidence * 100)}% confidence</span>` : ''}${rcpt ? '' : `<span class="muted small">${esc(d.category)}</span>`}</div>
       <div class="rowf"><input class="f" type="number" min="0" step="any" value="${d.count}" data-det="${i}" data-k="count" placeholder="Qty">
       <select class="f" data-det="${i}" data-k="unit">${UNITS.map(u => `<option ${u === d.unit ? 'selected' : ''}>${u}</option>`).join('')}</select>
-      <input class="f" type="number" min="0" step="0.01" value="${d.price ?? ''}" data-det="${i}" data-k="price" placeholder="Price"></div></div></div>`).join('')}</div>
-    <div class="g2 mt2"><button class="btn pri" data-a="commit" data-v="add">➕ Add to stock</button><button class="btn sec" data-a="commit" data-v="set">🧮 Set as count</button></div>
-    <div class="muted small mt"><b>Add</b> = a new delivery on top of current stock. <b>Set</b> = a full shelf count.</div></div>`;
+      <input class="f" type="number" min="0" step="0.01" value="${esc(rcpt ? (d.cost ?? '') : (d.price ?? ''))}" data-det="${i}" data-k="${rcpt ? 'cost' : 'price'}" placeholder="${rcpt ? 'Unit cost' : 'Price'}"></div></div></div>`).join('')}</div>
+    <div class="g2 mt2"><button class="btn pri" data-a="commit" data-v="add">${rcpt ? '📦 Log delivery' : '➕ Add to stock'}</button>${rcpt ? '' : '<button class="btn sec" data-a="commit" data-v="set">🧮 Set as count</button>'}</div>
+    <div class="muted small mt">${rcpt ? 'Stock rises by each line, cost prices update, and the ledger records a delivery from this receipt.' : '<b>Add</b> = a new delivery on top of current stock. <b>Set</b> = a full shelf count.'}</div></div>`;
+  }
   o += '</div>';
   return o;
 }
 function vSell() {
-  const v = U.voice;
-  let o = `<div class="sellgrid"><div class="card"><div class="ch"><h2><span class="ico t-info">🎙️</span>Voice sales</h2><span class="sub">${esc(set().lang)}${v.listening ? ' · live' : ''}</span></div><div class="voice">
-    <button class="micbtn ${v.listening || v.recording ? 'on' : ''}" data-a="listen">${v.listening || v.recording ? I.stop : I.mic}</button>
-    <div class="wave ${v.listening ? 'on' : ''}">${'<i></i>'.repeat(13)}</div>
-    <div class="trans ${v.transcript ? '' : 'ph2'}" id="trans">${v.transcript ? '“' + esc(v.transcript) + '”' : v.recording ? 'Recording… tap again to send' : v.busy ? 'Transcribing…' : v.listening ? 'Listening… everything you say lands on the bill' : 'Tap the mic, speak, tap again — English, हिन्दी, नेपाली, Español'}</div>
+  const v = U.voice, ready = aiReady();
+  let o = `<div class="sellgrid"><div class="card"><div class="ch"><h2><span class="ico t-info">🎙️</span>Voice sales</h2><span class="sub">${esc(set().lang)}${v.recording ? ' · recording' : ''}</span></div><div class="voice">
+    <button class="micbtn ${v.recording ? 'on' : ''}" data-a="listen" ${ready ? '' : 'disabled'} aria-label="${v.recording ? 'Stop recording' : 'Start recording'}">${v.recording ? I.stop : I.mic}</button>
+    <div class="wave ${v.recording ? 'on' : ''}">${'<i></i>'.repeat(13)}</div>
+    <div class="trans ${v.transcript ? '' : 'ph2'}" id="trans">${v.transcript ? '“' + esc(v.transcript) + '”' : v.recording ? 'Recording… tap again to send' : v.busy ? 'Transcribing…' : 'Tap the mic, speak, tap again — English, हिन्दी, नेपाली, Español'}</div>
     ${v.busy ? '<div class="muted"><div class="spin dk" style="width:22px;height:22px;border-width:3px"></div>Understanding…</div>' : ''}</div>
-    <div class="inrow mt"><input class="f" id="typed" placeholder="…or type: sold 2 milk and 1 bread"><button class="btn pri" data-a="typed">Add</button></div>
+    <div class="inrow mt"><input class="f" id="typed" placeholder="…or type: sold 2 milk and 1 bread" ${ready ? '' : 'disabled'}><button class="btn pri" data-a="typed" ${ready ? '' : 'disabled'}>Add</button></div>
+    ${ready ? '' : `<div class="muted small mt">Voice and typed commands are parsed by the AI backend — configure Gemini or your local server in Settings.</div>`}
     </div>`;
   if (v.bill.length) {
     const inc = v.bill.filter(b => b.include);
@@ -614,11 +449,11 @@ function vSettings() {
     <label class="lb">Shop name</label>${inp('storeName')}
     <div class="g2"><div><label class="lb">Currency</label>${inp('currency')}</div><div><label class="lb">Voice language</label><select class="f" data-set="lang">${[['en-US', 'English (US)'], ['en-GB', 'English (UK)'], ['es-ES', 'Español (ES)'], ['es-MX', 'Español (MX)'], ['es-CR', 'Español (CR)'], ['hi-IN', 'हिन्दी Hindi'], ['ne-NP', 'नेपाली Nepali'], ['fr-FR', 'Français'], ['pt-BR', 'Português']].map(([v, l]) => `<option value="${v}" ${v === s.lang ? 'selected' : ''}>${l}</option>`).join('')}</select></div></div>`)}
   ${sec(2, '🤖', 't-ind', 'AI backend', `
-    <div class="ch" style="border:0;padding:0 0 2px"><span class="pill ${aiReady() ? '' : 'off'}"><i></i>${aiReady() ? aiLabel() : 'On-device'}</span></div>
+    <div class="ch" style="border:0;padding:0 0 2px"><span class="pill ${aiReady() ? '' : 'off'}"><i></i>${aiReady() ? aiLabel() : 'AI off'}</span></div>
     <label class="lb">Backend</label><select class="f" data-set="aiMode">${[['gemini', 'Google Gemini API (cloud, API key)'], ['custom', 'Custom / local server (OpenAI-compatible — Gemma, llama.cpp, ollama…)']].map(([v, l]) => `<option value="${v}" ${v === s.aiMode ? 'selected' : ''}>${l}</option>`).join('')}</select>
     <label class="lb">Google Gemini API key</label><div class="inrow">${inp('apiKey', 'password', 'id="key" placeholder="AIza…" autocomplete="off"')}<button class="btn sm ghost" data-a="showkey">Show</button></div>
-    <div class="muted small mt">Get a free key at aistudio.google.com. Saved only on this device. Without a key, detection and voice parsing run on-device.</div>
-    <div class="g2"><div><label class="lb">Gemini model</label>${inp('model')}</div><div><label class="lb">Detection</label><select class="f" data-set="engine">${[['auto', 'Auto'], ['gemini', 'Gemini only'], ['coco', 'On-device only']].map(([v, l]) => `<option value="${v}" ${v === s.engine ? 'selected' : ''}>${l}</option>`).join('')}</select></div></div>
+    <div class="muted small mt">Get a free key at aistudio.google.com. Saved only on this device and never synced. Shelf scanning, receipts and voice commands all run on this backend.</div>
+    <label class="lb">Gemini model</label>${inp('model')}
     <div class="mt" style="border-top:1px solid var(--line);padding-top:12px">
       <label class="lb">Local server base URL</label>${inp('aiBaseUrl', 'text', 'placeholder="http://localhost:8080"')}
       <div class="g2"><div><label class="lb">Local model</label>${inp('aiModel')}</div><div></div></div>
@@ -679,7 +514,7 @@ function render() {
   }
   if (barEl) barEl.style.display = '';
   $('#storeName').textContent = set().storeName;
-  const pill = $('#enginePill'); if (pill) { pill.className = 'pill ' + (aiReady() ? '' : 'off'); pill.innerHTML = `<i></i>${aiReady() ? aiLabel() : 'On-device'}`; }
+  const pill = $('#enginePill'); if (pill) { pill.className = 'pill ' + (aiReady() ? '' : 'off'); pill.innerHTML = `<i></i>${aiReady() ? aiLabel() : 'AI off'}`; }
   const V = { home: vHome, scan: vScan, sell: vSell, stock: vStock, settings: vSettings }[U.tab];
   $('#view').innerHTML = `<div class="view">${V()}</div>`;
   $('#sheet').innerHTML = vSheet();
@@ -689,7 +524,7 @@ function render() {
     const img = $('#shot'); if (img) { const draw = () => drawBoxes($('#shotCv'), img.naturalWidth, img.naturalHeight, U.scan.dets); img.complete ? draw() : img.onload = draw; }
   }
 }
-const go = t => { if (t !== 'scan') stopCam(); if (t !== 'sell' && rec) try { rec.stop(); } catch (e) {} U.tab = t; render(); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+const go = t => { if (t !== 'scan') stopCam(); if (t !== 'sell' && U.voice.recording) stopRec(); U.tab = t; render(); window.scrollTo({ top: 0, behavior: 'smooth' }); };
 
 /* =========================================================== SCAN */
 async function startCam() {
@@ -699,30 +534,11 @@ async function startCam() {
     U.scan.image = null; U.scan.dets = []; U.scan.camOn = true; render();
   } catch (e) { toast('Camera unavailable (' + e.message + ') — opening photos', 'warn', 4500); $('#photoIn').click(); }
 }
-function stopCam() { U.scan.live = false; clearTimeout(liveTimer); if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; } U.scan.camOn = false; }
+function stopCam() { if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; } U.scan.camOn = false; }
 function capture() {
   const v = $('#video'); if (!v || !v.videoWidth) return toast('Camera not ready yet', 'warn');
   const k = Math.min(1, 1280 / Math.max(v.videoWidth, v.videoHeight)), c = document.createElement('canvas'); c.width = v.videoWidth * k; c.height = v.videoHeight * k;
   c.getContext('2d').drawImage(v, 0, 0, c.width, c.height); const url = c.toDataURL('image/jpeg', .85); stopCam(); analyze([url]);
-}
-async function loadCoco() {
-  if (coco) return coco;
-  U.scan.status = 'Loading on-device AI model (first time only)…'; render();
-  if (!window.tf) await loadScript('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js');
-  if (!window.cocoSsd) await loadScript('https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js');
-  coco = await cocoSsd.load({ base: 'lite_mobilenet_v2' }); return coco;
-}
-async function cocoDetect(url) {
-  const m = await loadCoco(); U.scan.status = 'Detecting items on-device…'; render();
-  const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
-  const g = {};
-  (await m.detect(img, 40, .35)).forEach(p => {
-    if (p.class === 'person') return;
-    const [name, cat] = COCO[p.class] || [p.class[0].toUpperCase() + p.class.slice(1), 'Other'], [x, y, w, h] = p.bbox;
-    const b = [y / img.height * 1000, x / img.width * 1000, (y + h) / img.height * 1000, (x + w) / img.width * 1000];
-    const e = g[name] || (g[name] = { name, category: cat, count: 0, unit: 'unit', confidence: 0, bs: [] }); e.count++; e.confidence = Math.max(e.confidence, p.score); e.bs.push(b);
-  });
-  return Object.values(g).map(e => ({ ...e, box: [Math.min(...e.bs.map(b => b[0])), Math.min(...e.bs.map(b => b[1])), Math.max(...e.bs.map(b => b[2])), Math.max(...e.bs.map(b => b[3]))] }));
 }
 async function geminiDetect(imgs) {
   const prompt = `You are the inventory vision system of a small grocery store. ${imgs.length > 1 ? `These ${imgs.length} images are frames from one video sweep of the same shelves; merge them and do NOT double-count items seen in several frames.` : 'Analyze the shelf image.'}
@@ -731,64 +547,73 @@ Return ONLY a JSON array, one object per distinct product: {"name": string, "cat
   const r = await gemini([{ text: prompt }, ...imgs.map(d => ({ inline_data: { mime_type: 'image/jpeg', data: d.split(',')[1] } }))]);
   return (Array.isArray(r) ? r : (r.products || r.items || [])).filter(x => x && x.name).map(x => ({ name: x.name, category: x.category, count: Math.round(+x.count || 1), unit: x.unit, confidence: x.confidence, price: x.price_guess, box: x.box_2d || null }));
 }
+async function receiptParse(imgs) {
+  const prompt = `You read purchase receipts for a small grocery store. ${imgs.length > 1 ? `These ${imgs.length} images are photos of ONE receipt (maybe several pages) — merge them and do not double-count lines.` : 'Read the receipt.'}
+Extract every PRODUCT line the store bought. Skip totals, subtotals, taxes, deposits, discounts, addresses and phone numbers.
+Give short English product names: keep brand and size when printed (e.g. "Coca-Cola 600ml"), else generic ("White Sugar 1kg"). A quantity of 1 with no printed number is normal for receipts.
+Return ONLY JSON: {"store": string|null, "date": "YYYY-MM-DD"|null, "total": number|null, "items": [{"name": string, "qty": number, "unit": "unit"|"kg"|"g"|"L"|"ml"|"pack", "cost": number|null (unit cost paid), "confidence": 0-1}]}. If the image is not a receipt or is unreadable, return {"store":null,"date":null,"total":null,"items":[]}.`;
+  const r = await gemini([{ text: prompt }, ...imgs.map(d => ({ inline_data: { mime_type: 'image/jpeg', data: d.split(',')[1] } }))]);
+  return { store: r.store || null, date: r.date || null, total: r.total != null ? +r.total : null,
+    items: (Array.isArray(r) ? r : (r.items || [])).filter(x => x && x.name).map(x => ({ name: x.name, count: +x.qty || 1, unit: x.unit, price: x.cost != null ? +x.cost : null, confidence: x.confidence })) };
+}
 async function analyze(imgs) {
-  const sc = U.scan; sc.image = imgs[0]; sc.dets = []; sc.busy = true;
-  const useG = set().engine === 'gemini' || (set().engine === 'auto' && aiReady());
-  sc.status = useG ? `Gemini is identifying products in ${imgs.length} image${imgs.length > 1 ? 's' : ''}…` : 'Preparing on-device AI…'; render();
-  let d = [];
-  try { if (useG) { d = await geminiDetect(imgs); sc.engine = aiLabel(); } else { d = await cocoDetect(imgs[0]); sc.engine = 'On-device COCO-SSD'; } }
-  catch (e) {
-    if (useG && set().engine === 'auto') { toast(aiLabel() + ' failed — using on-device model. ' + e.message, 'warn', 5000); try { d = await cocoDetect(imgs[0]); sc.engine = 'On-device COCO-SSD'; } catch (e2) { toast(e2.message, 'err', 5000); } }
-    else toast(e.message, 'err', 5000);
+  const sc = U.scan; sc.image = imgs[0]; sc.dets = []; sc.rcpt = null; sc.busy = true;
+  if (sc.mode === 'rcpt') { // receipt intake: vision-only, needs an AI backend
+    if (!aiReady()) { sc.busy = false; render(); return toast('Reading receipts needs an AI backend — Settings → AI backend', 'warn', 5000); }
+    sc.status = 'Reading the receipt with ' + aiLabel() + '…'; render();
+    let r = null;
+    try { r = await receiptParse(imgs); sc.engine = aiLabel() + ' · receipt'; }
+    catch (e) { toast('Receipt read failed: ' + e.message + ' — try a flatter, well-lit shot', 'err', 6000); }
+    sc.busy = false; sc.rcpt = r;
+    sc.dets = (r ? r.items : []).map(x => { const m = Core.matchProduct(x.name, S.products);
+      return { name: x.name, category: m.product?.category || 'Other', count: Math.max(0, +x.count || 1), unit: UNITS.includes(x.unit) ? x.unit : 'unit', cost: +x.price || null, confidence: x.confidence, box: null, include: true, matchId: m.product?.id || null }; });
+    render();
+    if (sc.dets.length) toast(`Read ${sc.dets.length} line${sc.dets.length > 1 ? 's' : ''} — check them, then log the delivery`, 'ok'); else toast('No receipt lines recognized — try a closer, well-lit photo', 'warn', 5000);
+    return;
   }
+  if (!aiReady()) { sc.busy = false; render(); return toast('Scanning needs an AI backend — Settings → AI backend', 'warn', 5000); }
+  sc.status = aiLabel() + ` is identifying products in ${imgs.length} image${imgs.length > 1 ? 's' : ''}…`; render();
+  let d = [];
+  try { d = await geminiDetect(imgs); sc.engine = aiLabel(); }
+  catch (e) { toast(e.message, 'err', 5000); }
   sc.busy = false;
   sc.dets = d.map(x => { const m = Core.matchProduct(x.name, S.products); return { name: x.name, category: CAT[x.category] ? x.category : 'Other', count: Math.max(0, +x.count || 1), unit: UNITS.includes(x.unit) ? x.unit : 'unit', price: m.product ? m.product.price : (+x.price || null), confidence: x.confidence, box: x.box, include: true, matchId: m.product?.id || null }; });
   render();
-  if (d.length) toast(`Found ${d.length} product type${d.length > 1 ? 's' : ''}`, 'ok'); else toast('No products recognized — try a closer, well-lit photo' + (aiReady() ? '' : ' or configure an AI backend'), 'warn', 5000);
-}
-async function toggleLive() {
-  if (U.scan.live) { U.scan.live = false; clearTimeout(liveTimer); render(); return; }
-  try { U.scan.busy = true; await loadCoco(); } catch (e) { toast(e.message, 'err'); }
-  U.scan.busy = false; if (!coco) return render();
-  U.scan.live = true; render(); loop();
-}
-async function loop() {
-  if (!U.scan.live || !U.scan.camOn) return;
-  const v = $('#video'), c = $('#liveCv');
-  if (v && v.videoWidth && c) {
-    const p = await coco.detect(v, 20, .45);
-    if (U.scan.live && $('#liveCv')) drawBoxes($('#liveCv'), v.videoWidth, v.videoHeight, p.filter(x => x.class !== 'person').map(x => { const [X, Y, W, H] = x.bbox; return { name: (COCO[x.class] || [x.class])[0], count: 1, box: [Y / v.videoHeight * 1000, X / v.videoWidth * 1000, (Y + H) / v.videoHeight * 1000, (X + W) / v.videoWidth * 1000] }; }));
-  }
-  liveTimer = setTimeout(loop, 300);
+  if (d.length) toast(`Found ${d.length} product type${d.length > 1 ? 's' : ''}`, 'ok'); else toast('No products recognized — try a closer, well-lit photo', 'warn', 5000);
 }
 function commit(mode) {
+  const rcpt = U.scan.mode === 'rcpt';
+  if (rcpt) mode = 'add'; // a receipt is what arrived — never an absolute shelf count
+  const src = rcpt ? 'receipt' : 'scan';
   let a = 0, u = 0;
   U.scan.dets.filter(d => d.include && d.name.trim()).forEach(d => {
     const q = +d.count || 0; let p = d.matchId && prod(d.matchId);
-    if (p) { const b = p.stock; p.stock = mode === 'set' ? q : +(p.stock + q).toFixed(3); if (d.price) p.price = +d.price;
-      S.moves.push({ id: uid(), productId: p.id, type: mode === 'set' ? 'adjust' : 'restock', qty: +(p.stock - b).toFixed(3), delta: +(p.stock - b).toFixed(3), ts: Date.now(), source: 'scan' }); u++; }
-    else { p = { id: uid(), name: d.name.trim(), aliases: [], category: d.category, unit: d.unit, stock: q, price: +d.price || 0, cost: d.price ? +(d.price * .75).toFixed(2) : 0, minStock: null, createdAt: Date.now() };
-      S.products.push(p); S.moves.push({ id: uid(), productId: p.id, type: 'restock', qty: q, delta: q, ts: Date.now(), source: 'scan' }); a++; }
+    if (p) { const b = p.stock; p.stock = mode === 'set' ? q : +(p.stock + q).toFixed(3);
+      if (rcpt && d.cost) { p.cost = +d.cost; if (!p.price) p.price = +(d.cost * 1.35).toFixed(2); }
+      if (!rcpt && d.price) p.price = +d.price;
+      S.moves.push({ id: uid(), productId: p.id, type: mode === 'set' ? 'adjust' : 'restock', qty: +(p.stock - b).toFixed(3), delta: +(p.stock - b).toFixed(3), ts: Date.now(), source: src }); u++; }
+    else { p = { id: uid(), name: d.name.trim(), aliases: [], category: d.category, unit: d.unit, stock: q,
+        price: rcpt ? (d.cost ? +(d.cost * 1.35).toFixed(2) : 0) : +d.price || 0,
+        cost: rcpt ? +d.cost || 0 : (d.price ? +(d.price * .75).toFixed(2) : 0),
+        minStock: null, createdAt: Date.now() };
+      S.products.push(p); S.moves.push({ id: uid(), productId: p.id, type: 'restock', qty: q, delta: q, ts: Date.now(), source: src }); a++; }
   });
-  save(); U.scan.image = null; U.scan.dets = []; toast(`✅ Inventory updated: ${a} new, ${u} updated`, 'ok'); go('stock');
+  save(); U.scan.image = null; U.scan.dets = []; U.scan.rcpt = null;
+  toast(`${rcpt ? '📦 Delivery logged' : '✅ Inventory updated'}: ${a} new, ${u} updated`, 'ok'); go('stock');
 }
 
 /* =========================================================== VOICE */
 async function listen() {
   if (U.voice.recording) return stopRec();
-  // With an AI backend the audio goes straight to the model (browser speech
-  // recognition has no Nepali); browser SR stays the offline fallback.
-  if (aiReady() && navigator.mediaDevices?.getUserMedia) return startRec();
-  listenBrowser();
+  if (!aiReady()) return toast('Voice needs an AI backend — Settings → AI backend', 'warn', 5000);
+  if (!navigator.mediaDevices?.getUserMedia) return toast('Microphone needs HTTPS — type the command instead', 'warn', 5000);
+  startRec();
 }
 async function startRec() {
   if (!S.products.length) toast('Tip: add products first (Scan or Load demo)', 'warn');
   let stream;
   try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
-  catch (e) {
-    toast('Mic unavailable: ' + e.message + ' — falling back to browser recognition', 'warn', 5000);
-    return listenBrowser();
-  }
+  catch (e) { return toast('Mic unavailable: ' + e.message, 'err', 5000); }
   const ctx = new (window.AudioContext || window.webkitAudioContext)();
   const src = ctx.createMediaStreamSource(stream);
   const proc = ctx.createScriptProcessor(4096, 1, 1);
@@ -820,46 +645,19 @@ async function stopRec() {
     toast('Transcription failed: ' + e.message + ' — you can type the command', 'err', 6000);
   }
 }
-function listenBrowser() {
-  if (U.voice.listening) { U.voice.live = false; try { rec.stop(); } catch (e) {} return; }
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SR) return toast('Voice not supported in this browser — type the command (Chrome / Safari work best)', 'warn', 5000);
-  if (!S.products.length) toast('Tip: add products first (Scan or Load demo)', 'warn');
-  rec = new SR(); rec.lang = set().lang; rec.interimResults = true; rec.continuous = true;
-  const done = new Set();
-  rec.onresult = e => {
-    for (let i = 0; i < e.results.length; i++) {
-      const res = e.results[i];
-      U.voice.transcript = res[0].transcript;
-      const el = $('#trans'); if (el) { el.textContent = '“' + res[0].transcript + '”'; el.classList.remove('ph2'); }
-      if (res.isFinal && !done.has(i) && res[0].transcript.trim()) { done.add(i); command(res[0].transcript.trim(), 'voice'); }
-    }
-  };
-  rec.onerror = e => { if (!['no-speech', 'aborted'].includes(e.error)) toast('Mic error: ' + e.error + (e.error === 'not-allowed' ? ' — allow microphone access (HTTPS required)' : ''), 'err', 5000); };
-  rec.onend = () => { if (U.voice.listening && U.voice.live) { try { rec.start(); } catch (e) { U.voice.listening = false; render(); } return; } U.voice.listening = false; render(); };
-  U.voice.transcript = ''; U.voice.live = true; U.voice.listening = true; render();
-  try { rec.start(); } catch (e) { U.voice.live = false; U.voice.listening = false; render(); toast(e.message, 'err'); }
-}
 async function command(text, source) {
   U.voice.transcript = text;
-  let P = Core.parseCommand(text, S.products);
-  if ((!P.items.length || P.items.some(i => !i.productId)) && aiReady() && S.products.length) {
-    U.voice.busy = true; render();
-    try {
-      const r = await gemini([{ text: `You parse voice commands from a grocery shop owner. The command may be in English, Spanish, Hindi (हिन्दी) or Nepali (नेपाली) — including Devanagari script, Devanagari digits (०१२३४५६७८९), and romanized words (chini, bhaat, chamal, chiya, nun, tel, dal). Half = 0.5, quarter = 0.25, "एक पाउ" ≈ 0.5 kg, "आधा किलो" = 0.5 kg, "पाउ" ≈ 0.55 kg if unsure use 0.5. Inventory product names: ${JSON.stringify(S.products.map(p => p.name))}.
+  if (!aiReady()) return toast('Parsing needs an AI backend — Settings → AI backend', 'warn', 5000);
+  if (!S.products.length) { render(); return toast('Add products first — Scan the store or Load demo', 'warn'); }
+  U.voice.busy = true; render();
+  let P;
+  try {
+    const r = await gemini([{ text: `You parse voice commands from a grocery shop owner. The command may be in English, Spanish, Hindi (हिन्दी) or Nepali (नेपाली) — including Devanagari script, Devanagari digits (०१२३४५६७८९), and romanized words (chini, bhaat, chamal, chiya, nun, tel, dal). Half = 0.5, quarter = 0.25, "एक पाउ" ≈ 0.5 kg, "आधा किलो" = 0.5 kg, "पाउ" ≈ 0.55 kg if unsure use 0.5. Inventory product names: ${JSON.stringify(S.products.map(p => p.name))}.
 Command: "${text}"
 Return JSON {"items":[{"intent":"sale"|"restock","product": the inventory name copied VERBATIM — never translate, translate-from or shorten it; null only if nothing in the inventory fits (match by meaning across languages: चिनी/cheeni→Sugar, चामल/भात/chamal/bhaat→Rice, चिया→Tea, नुन→Salt, तेल→oil, दाल→lentils),"heard": the owner's words for that item, in the original language,"qty": number,"unit":"kg"|"g"|"L"|"ml"|"unit"|"pack"|"dozen"|null}]} — one entry PER item mentioned, each with ITS OWN intent, because one command can mix them ("rice sold and eggs arrived"). sold/bikri/bikri bhayo/becha/vendí/बिक्री/बेचा = sale; received/arrived/delivery/llegaron/आयो/आए/पसलमा आयो/मंगाएको/खरिद = restock.` }]);
-      const defIntent = r.intent === 'restock' ? 'restock' : 'sale';
-      const items = (r.items || []).map(it => {
-        const p = S.products.find(x => x.name === it.product)
-          || (it.product && Core.matchProduct(it.product, S.products).product)
-          || (it.heard && Core.matchProduct(it.heard, S.products).product);
-        return { intent: it.intent === 'restock' ? 'restock' : it.intent === 'sale' ? 'sale' : defIntent, query: it.heard || it.product || '?', qty: +it.qty || 1, unit: it.unit || null, productId: p?.id || null };
-      });
-      if (items.length) P = { text, intent: defIntent, items };
-    } catch (e) { toast('AI parsing unavailable: ' + e.message, 'warn'); }
-    U.voice.busy = false;
-  }
+    P = Core.normalizeModelParse(r, text, S.products);
+  } catch (e) { U.voice.busy = false; render(); return toast('AI parsing unavailable: ' + e.message, 'warn', 5000); }
+  U.voice.busy = false;
   if (!P.items.length) { render(); toast('I didn\'t catch a product. Try: “two bread sold”', 'warn'); speak('Sorry, I did not catch the product.'); return; }
   P.items.forEach(it => U.voice.bill.push({ id: uid(), text, intent: it.intent || P.intent, query: it.query, qty: it.qty, unit: it.unit, productId: it.productId, include: true, source }));
   render();
@@ -874,9 +672,11 @@ function billApply(print) {
   ok.forEach(b => {
     const p = prod(b.productId); const q = +Core.convertQty(+b.qty, b.unit || null, p.unit).toFixed(3);
     if (b.intent === 'sale') {
-      if (q > p.stock) alerts.push(`Only ${fq(p.stock, p.unit)} of ${p.name} was in stock — please recount.`);
+      const over = q > p.stock;
+      if (over) alerts.push(`Only ${fq(p.stock, p.unit)} of ${p.name} was in stock — please recount.`);
       const st = p.stock; p.stock = Math.max(0, +(p.stock - q).toFixed(3)); const t = +(q * p.price).toFixed(2); total += t;
-      S.moves.push({ id: uid(), productId: p.id, type: 'sale', qty: q, delta: +(p.stock - st).toFixed(3), unitPrice: p.price, total: t, ts: Date.now(), source: b.source || 'bill', text: b.text });
+      S.moves.push({ id: uid(), productId: p.id, type: 'sale', qty: q, delta: +(p.stock - st).toFixed(3), unitPrice: p.price, total: t, ts: Date.now(), source: b.source || 'bill',
+        text: over ? [b.text, 'oversold'].filter(Boolean).join(' — ') : b.text }); // the ledger keeps the oversell auditable
     } else { const st = p.stock; p.stock = +(p.stock + q).toFixed(3); S.moves.push({ id: uid(), productId: p.id, type: 'restock', qty: q, delta: +(p.stock - st).toFixed(3), ts: Date.now(), source: b.source || 'bill', text: b.text }); }
     msgs.push({ name: p.name, qty: q, unit: p.unit, price: p.price, line: b.intent === 'sale' ? +(q * p.price).toFixed(2) : null, intent: b.intent });
   });
@@ -984,12 +784,13 @@ function saveP() {
 /* =========================================================== EVENTS */
 const ACT = {
   tab: el => go(el.dataset.v), demo, share, advisor,
-  cam: startCam, camoff: () => { stopCam(); render(); }, capture, live: toggleLive, rescan: () => { U.scan.image = null; U.scan.dets = []; render(); },
+  cam: startCam, camoff: () => { stopCam(); render(); }, capture,
+  scanmode: el => { if (U.scan.mode === el.dataset.v) return; stopCam(); U.scan.mode = el.dataset.v; U.scan.image = null; U.scan.dets = []; U.scan.rcpt = null; render(); },
+  rescan: () => { U.scan.image = null; U.scan.dets = []; U.scan.rcpt = null; render(); },
   pick: el => $('#' + el.dataset.v).click(), commit: el => commit(el.dataset.v),
   listen, typed: () => { const t = $('#typed').value.trim(); if (t) command(t, 'typed'); },
   billApply: () => billApply(false), billPrint: () => billApply(true),
   billClear: () => { U.voice.bill = []; render(); }, billRemove: el => { U.voice.bill = U.voice.bill.filter(b => b.id !== el.dataset.v); render(); },
-  undo: el => { const m = S.moves.find(x => x.id === el.dataset.v); if (!m) return; const p = prod(m.productId); if (p) p.stock = Math.max(0, +(p.stock - (m.delta ?? (m.type === 'sale' ? -m.qty : m.qty))).toFixed(3)); S.moves = S.moves.filter(x => x !== m); save(); render(); toast('↩️ Undone'); },
   setupMode: el => { U.setup.mode = el.dataset.v; U.setup.msg = ''; render(); },
   theme: el => {
     const v = el.dataset.v; // auto | light | dark (the Board pattern)
@@ -1002,7 +803,7 @@ const ACT = {
   setupSkip: () => {
     const nm = ($('#su_name')?.value || '').trim(); if (nm) set().storeName = nm;
     const cur = ($('#su_cur')?.value || '').trim(); if (cur) set().currency = cur;
-    set().setupDone = true; save(); render(); toast('On-device mode — configure an AI backend anytime in Settings', 'warn', 5000);
+    set().setupDone = true; save(); render(); toast('Setup skipped — configure an AI backend anytime in Settings', 'warn', 5000);
   },
   setupTest: async () => {
     const st = U.setup;
@@ -1032,7 +833,8 @@ const ACT = {
   cat: el => { U.inv.cat = el.dataset.v; render(); }, sort: el => { U.inv.sort = el.dataset.v; render(); }, qm: el => quick(el.dataset.v, el.dataset.t),
   invCsv: () => {
     const rows = A().rows.sort((a, b) => a.p.name.localeCompare(b.p.name));
-    const cell = x => `"${String(x ?? '').replace(/"/g, '""')}"`;
+    // leading space defuses spreadsheet formula injection (=SUM… in a name)
+    const cell = x => { const v = String(x ?? '').replace(/"/g, '""'); return '"' + (/^[=+\-@\t\r]/.test(v) ? ' ' + v : v) + '"'; };
     const csv = ['Name,Category,Unit,Stock,MinStock,Price,Cost,Value,Status']
       .concat(rows.map(r => [r.p.name, r.p.category || 'Other', r.p.unit, r.p.stock, r.p.minStock ?? '', r.p.price, r.p.cost ?? '',
         (Math.max(0, r.p.stock) * (r.p.cost || r.p.price * .75 || 0)).toFixed(2), r.status].map(cell).join(','))).join('\n');
@@ -1078,12 +880,15 @@ document.addEventListener('input', ev => {
 document.addEventListener('change', ev => {
   const t = ev.target;
   if (t.dataset.set) { const k = t.dataset.set; S.settings[k] = t.type === 'number' ? (+t.value || 0) : t.value.trim(); save();
-    $('#storeName').textContent = set().storeName; const pill = $('#enginePill'); pill.className = 'pill ' + (aiReady() ? '' : 'off'); pill.innerHTML = `<i></i>${aiReady() ? aiLabel() : 'On-device'}`; }
+    $('#storeName').textContent = set().storeName; const pill = $('#enginePill'); pill.className = 'pill ' + (aiReady() ? '' : 'off'); pill.innerHTML = `<i></i>${aiReady() ? aiLabel() : 'AI off'}`; }
   if (t.dataset.det !== undefined) { const d = U.scan.dets[+t.dataset.det];
-    if (t.dataset.k === 'name') { const m = Core.matchProduct(d.name, S.products); d.matchId = m.product?.id || null; if (m.product && !d.price) d.price = m.product.price; render(); }
+    if (t.dataset.k === 'name') { const m = Core.matchProduct(d.name, S.products); d.matchId = m.product?.id || null; if (m.product && !d.price && U.scan.mode !== 'rcpt') d.price = m.product.price; render(); }
     else if (t.dataset.k === 'include') render(); }
   if (t.id === 'photoIn') { const fs = [...t.files].slice(0, 6); t.value = ''; if (fs.length) Promise.all(fs.map(f => fileToURL(f).then(d => resize(d)))).then(analyze).catch(e => toast(e.message, 'err')); }
-  if (t.id === 'importIn') { const f = t.files[0]; t.value = ''; if (!f) return; f.text().then(x => { const d = JSON.parse(x); S.products = d.products || []; S.moves = d.moves || []; if (d.settings) Object.assign(S.settings, { ...d.settings, apiKey: S.settings.apiKey }); save(); render(); toast('Imported', 'ok'); }).catch(() => toast('Invalid file', 'err')); }
+  if (t.id === 'importIn') { const f = t.files[0]; t.value = ''; if (!f) return; f.text().then(x => { const d = JSON.parse(x);
+    if (!Array.isArray(d.products) || !Array.isArray(d.moves)) throw new Error('not a ShelfSense export');
+    S.products = d.products; S.moves = d.moves; if (d.settings) Object.assign(S.settings, { ...d.settings, apiKey: S.settings.apiKey }); save(); render(); toast('Imported', 'ok');
+  }).catch(() => toast('Invalid file — expected a ShelfSense export', 'err')); }
 });
 document.addEventListener('keydown', ev => { if (ev.key === 'Enter' && ev.target.id === 'typed') ACT.typed(); if (ev.key === 'Escape' && U.edit) { U.edit = null; render(); } });
 
@@ -1098,29 +903,40 @@ window.__cloudPut = null;
   const pillEl = $('#cloudPill');
   const setPill = (on, label) => { if (!pillEl) return; pillEl.style.display = ''; pillEl.className = 'pill ' + (on ? '' : 'off'); pillEl.innerHTML = '<i></i>' + label; };
   if (!FB || !cfg.apiKey) return; // local-only mode: pill stays hidden
-  let timer = null, uid = null, applying = false;
-  const push = () => {
-    if (!uid) return;
-    clearTimeout(timer);
-    timer = setTimeout(() => setDoc(FB.doc(FB.getFirestore(app), 'users', uid), JSON.parse(JSON.stringify(S))).catch(() => setPill(false, 'Cloud offline')), 1200);
-  };
-  window.__cloudPut = push;
   let app;
   try { app = FB.initializeApp(cfg); } catch (e) { return; }
   const db = FB.getFirestore(app);
+  let timer = null, uid = null, ref = null, applying = false;
+  const payload = () => JSON.parse(JSON.stringify({ ...S, settings: { ...S.settings, apiKey: '' } }));
+  const push = () => {
+    if (!uid || !ref) return;
+    clearTimeout(timer);
+    // Compare-and-set inside a transaction: if a newer write landed while
+    // this one sat debounced (background tabs throttle timers for minutes),
+    // skip it — the live snapshot applies the newer state instead of being
+    // clobbered by our stale one.
+    timer = setTimeout(() => {
+      FB.runTransaction(db, async (tx) => {
+        const snap = await tx.get(ref);
+        if (snap.exists() && (snap.data().savedAt || 0) > (S.savedAt || 0)) return;
+        tx.set(ref, payload());
+      }).catch(() => setPill(false, 'Cloud offline'));
+    }, 1200);
+  };
+  window.__cloudPut = push;
   setPill(false, 'Connecting…');
   FB.signInAnonymously(FB.getAuth(app)).catch(() => setPill(false, 'Local'));
   FB.onAuthStateChanged(FB.getAuth(app), async (u) => {
     if (!u) { uid = null; setPill(false, 'Local'); return; }
     uid = u.uid;
-    const ref = FB.doc(db, 'users', uid);
+    ref = FB.doc(db, 'users', uid);
     try {
       const snap = await FB.getDoc(ref);
       if (snap.exists() && (snap.data().savedAt || 0) > (S.savedAt || 0)) {
         const d = snap.data();
         S.products = d.products || []; S.moves = d.moves || [];
-        S.settings = Object.assign({}, DEF, d.settings || {});
-        save(); render();
+        S.settings = Object.assign({}, DEF, d.settings || {}, { apiKey: set().apiKey });
+        save(false); render(); // already the cloud's data — no write-back
         toast('☁️ Loaded newer data from the cloud', 'ok');
       }
       setPill(true, 'Cloud');
@@ -1132,8 +948,8 @@ window.__cloudPut = null;
         if ((d.savedAt || 0) > (S.savedAt || 0)) {
           applying = true;
           S.products = d.products || []; S.moves = d.moves || [];
-          S.settings = Object.assign({}, DEF, d.settings || {});
-          save(); render(); applying = false;
+          S.settings = Object.assign({}, DEF, d.settings || {}, { apiKey: set().apiKey });
+          save(false); render(); applying = false;
         }
       });
     } catch (e) { setPill(false, 'Cloud offline'); }
