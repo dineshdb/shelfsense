@@ -505,6 +505,9 @@ function vScan() {
   if (sc.image && !sc.busy) o += `<button class="btn ghost w mt" data-a="rescan">↺ Scan again</button>`;
   if (sc.live) o += `<div class="muted small mt">Live mode runs on-device and recognizes generic items (bottles, fruit, vegetables). Tap Capture for full product recognition${aiReady() ? ' with ' + aiLabel() : ''}.</div>`;
   o += `</div>`;
+  if (!sc.dets.length && !sc.busy) o += `<div class="card"><div class="ch"><h2><span class="ico t-info">🔎</span>Found products</h2></div>
+    <div class="empty"><span class="e">🔍</span>Capture a shelf and everything the AI recognizes lands here — check names, quantities and prices, then save to inventory.</div>
+    <div class="muted small mt">Use <b>Live camera</b> for a real shelf, or <b>Photos</b> to upload shots. Detection runs ${useG ? 'with ' + aiLabel() : 'fully on-device'}.</div></div>`;
   if (sc.dets.length) o += `<div class="card"><div class="ch"><h2><span class="ico t-info">🔎</span>${sc.dets.length} products found</h2><span class="sub">${esc(sc.engine)}</span></div>
     <div class="muted small" style="margin:-4px 0 10px">Check names, quantities and prices, then save to inventory.</div><div class="list">${sc.dets.map((d, i) => `
     <div class="det"><input type="checkbox" data-det="${i}" data-k="include" ${d.include ? 'checked' : ''}><div>
@@ -639,7 +642,7 @@ function vSettings() {
 function vSheet() {
   const e = U.edit; if (!e) return '';
   const hist = e.id ? S.moves.filter(m => m.productId === e.id).sort((a, b) => b.ts - a.ts).slice(0, 8) : [];
-  return `<div class="sheetbg" data-a="closeSheet"><div class="sheet" data-stop"><div class="grab"></div><h3>${e.id ? 'Edit product' : 'New product'}</h3>
+  return `<div class="sheetbg" data-a="closeSheet"><div class="sheet" data-stop><div class="grab"></div><h3>${e.id ? 'Edit product' : 'New product'}</h3>
     <label class="lb">Name</label><input class="f" id="e_name" value="${esc(e.name)}">
     <label class="lb">Voice aliases (comma separated)</label><input class="f" id="e_alias" value="${esc((e.aliases || []).join(', '))}" placeholder="coke, soda, refresco">
     <div class="g2"><div><label class="lb">Category</label><select class="f" id="e_cat">${Object.keys(CAT).map(c => `<option ${c === e.category ? 'selected' : ''}>${c}</option>`).join('')}</select></div>
