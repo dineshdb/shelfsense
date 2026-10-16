@@ -1,0 +1,52 @@
+# Auto-deploys to Firebase on every push to main: builds the Astro site,
+# ships hosting + Firestore rules, smoke-checks the live URL.
+# Auth: the FIREBASE_SERVICE_ACCOUNT_SHELFSENSE_DF2265 GitHub secret (JSON key
+# of the shelfsense-deploy service account). Re-mint it with
+# scripts/setup-ci-deploy.sh.
+name: Deploy to Firebase
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: firebase-production
+  cancel-in-progress: false
+
+env:
+  FIREBASE_PROJECT: shelfsense-df2265
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Deploy hosting + Firestore rules
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_SHELFSENSE_DF2265 }}
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/firebase-key.json
+        run: |
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$GOOGLE_APPLICATION_CREDENTIALS"
+          npx -y firebase-tools@15 deploy \
+            --project "$FIREBASE_PROJECT" \
+            --only hosting,firestore:rules \
+            --non-interactive
+
+      - name: Smoke-check the live site
+        shell: bash
+        run: |
+          sleep 3
+          curl -sS --fail-with-body "https://$FIREBASE_PROJECT.web.app/" | grep -q FIREBASE_CONFIG
