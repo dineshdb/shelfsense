@@ -456,9 +456,6 @@ function vHome() {
     <div class="sm">${today.length} sales recorded today</div></div>
     <div class="ring" style="--p:${health}"><div><b>${health}%</b><small>Stock health</small></div></div></div>
     <div class="hstats"><div><b>${money(s7.reduce((s, m) => s + m.total, 0))}</b><span>Revenue · 7d</span></div><div><b style="color:${low.length ? 'var(--bad)' : 'var(--ok)'}">${low.length}</b><span>Need reorder</span></div><div><b>${money(stockVal)}</b><span>Stock value</span></div></div></div>`;
-  o += `<div class="qa"><button data-a="tab" data-v="scan"><span class="ic">${I.scan}</span>Scan shelf</button>
-    <button data-a="tab" data-v="sell"><span class="ic">${I.mic}</span>Voice sale</button>
-    <button data-a="share" ${reorder.length ? '' : 'disabled style="opacity:.5"'}><span class="ic">${I.cart}</span>Order list</button></div>`;
   if (low.length) g += `<div class="card"><div class="ch"><h2><span class="ico t-bad">🚨</span>Low-stock alerts</h2><span class="sub">${low.length} item${low.length > 1 ? 's' : ''}</span></div><div class="list">${low.map(r => `
     <div class="it"><div class="em">${emoji(r.p)}</div><div class="mid"><div class="tt">${esc(r.p.name)}</div><div class="ss">${fq(r.p.stock, r.p.unit)} left · ${daysTxt(r.daysLeft)}</div>
     <div class="bar"><i style="width:${Math.max(4, Math.min(100, r.p.stock / Math.max(r.rop, .01) * 50))}%;background:${color(r.status)}"></i></div></div>
