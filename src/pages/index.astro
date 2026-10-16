@@ -556,7 +556,9 @@ function vSell() {
     <div class="total"><span>Bill total</span><b>${money(total)}</b></div>
     <div class="g2 mt"><button class="btn pri" data-a="billApply">✔ Done</button>
     <button class="btn sec" data-a="billPrint">🖨️ Print bill</button></div></div>`;
-  }
+  } else o += `<div class="card"><div class="ch"><h2><span class="ico t-ind">🧾</span>Current bill</h2></div>
+    <div class="empty"><span class="e">🧾</span>Speak or type a sale — every item lands here as a line you confirm before it touches stock.</div>
+    <div class="muted small mt">Try “आधा किलो दूध बिक्री भयो”, “2 kg sugar and 3 bread”, or “5 kg chamal bikri bhayo”.</div></div>`;
   o += '</div>';
   return o;
 }
