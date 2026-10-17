@@ -240,21 +240,36 @@ function normalizeModelParse(r, text, products) {
     raw = r.items;
   } else if (r && Array.isArray(r.products)) {
     raw = r.products;
-  } else if (r && (r.product || r.heard)) {
+  } else if (r && Array.isArray(r.order)) {
+    raw = r.order;
+  } else if (r && Array.isArray(r.sales)) {
+    raw = r.sales;
+  } else if (r && Array.isArray(r.cart)) {
+    raw = r.cart;
+  } else if (r && Array.isArray(r.bill)) {
+    raw = r.bill;
+  } else if (r && (r.product || r.heard || r.name || r.item || r.product_name)) {
     raw = [r];
   }
   const items = raw.map((it) => {
     it = it && typeof it === "object" ? it : {};
+    const itemQuery = it.heard || it.product || it.name || it.item || it.product_name || it.title || it.query || "";
     const p =
-      (typeof it.product === "string" && products.find((x) => x.name === it.product)) ||
+      (typeof it.product === "string" && products.find((x) => x.name.toLowerCase() === it.product.toLowerCase())) ||
       (it.product && matchProduct(it.product, products).product) ||
-      (it.heard && matchProduct(it.heard, products).product);
-    const q = +it.qty;
+      (it.name && matchProduct(it.name, products).product) ||
+      (it.item && matchProduct(it.item, products).product) ||
+      (it.product_name && matchProduct(it.product_name, products).product) ||
+      (it.heard && matchProduct(it.heard, products).product) ||
+      (itemQuery && matchProduct(itemQuery, products).product);
+    const parsedQty = +(it.qty ?? it.quantity ?? it.count);
+    const q = isFinite(parsedQty) && parsedQty > 0 ? parsedQty : 1;
+    const unitStr = it.unit || it.unit_name || null;
     return {
       intent: it.intent === "restock" ? "restock" : it.intent === "sale" ? "sale" : defIntent,
-      query: it.heard || it.product || "?",
-      qty: q > 0 ? q : 1,
-      unit: VALID_UNITS.has(it.unit) ? it.unit : null,
+      query: itemQuery || "?",
+      qty: q,
+      unit: VALID_UNITS.has(unitStr) ? unitStr : null,
       productId: p ? p.id : null,
     };
   });

@@ -1,11 +1,12 @@
-// ShelfSense AI — Multimodal AI Client (Gemini & Local Gemma / Custom)
+// ShelfSense AI — Multimodal AI Client (Gemini & Local Gemma / Custom / WebLLM)
 import { CAT } from './constants.js';
 import { S, set, save } from './state.js';
 import { toast } from './utils.js';
+import { isLocalEngineReady, webllmParseVoiceCommand } from './webllm.js';
 
-export const aiReady = () => (set().aiMode === 'custom' && set().aiBaseUrl) || !!set().apiKey;
+export const aiReady = () => (set().aiMode === 'custom' && set().aiBaseUrl) || !!set().apiKey || isLocalEngineReady();
 
-export const aiLabel = () => set().aiMode === 'custom' && set().aiBaseUrl ? `Local ${set().aiModel}` : 'Gemini AI';
+export const aiLabel = () => isLocalEngineReady() ? 'On-Device AI' : (set().aiMode === 'custom' && set().aiBaseUrl ? `Local ${set().aiModel}` : 'Gemini AI');
 
 export const fetchT = (url, opts, ms = 60000) => {
   return fetch(url, { ...opts, signal: AbortSignal.timeout(ms) })
@@ -95,15 +96,19 @@ export async function aiTranscribe(wavB64, lang) {
  */
 export function resolveVoiceEngine() {
   const engine = set().voiceEngine || 'auto';
-  const hasLocal = !!set().aiBaseUrl;
+  const hasLocal = !!set().aiBaseUrl || isLocalEngineReady();
   const hasCloud = !!set().apiKey;
   const isOnline = typeof navigator === 'undefined' || navigator.onLine !== false;
 
-  if (engine === 'gemma') return { engine: 'gemma', label: 'Local Gemma ($0 Cost)', isOffline: true };
+  if (engine === 'gemma') {
+    const label = isLocalEngineReady() ? 'On-Device Mobile AI ($0 Cost)' : 'Local Gemma ($0 Cost)';
+    return { engine: 'gemma', label, isOffline: true };
+  }
   if (engine === 'gemini') return { engine: 'gemini', label: 'Gemini Cloud Pro', isOffline: false };
-  // 'auto': prioritize local Gemma if base URL is provided or device is offline
+  // 'auto': prioritize local Gemma/on-device if loaded, base URL is provided, or device is offline
   if (!isOnline || hasLocal) {
-    return { engine: 'gemma', label: 'Smart Auto · Local Gemma', isOffline: !isOnline };
+    const label = isLocalEngineReady() ? 'Smart Auto · On-Device AI' : 'Smart Auto · Local Gemma';
+    return { engine: 'gemma', label, isOffline: !isOnline };
   }
   return { engine: hasCloud ? 'gemini' : 'gemma', label: hasCloud ? 'Smart Auto · Gemini Cloud' : 'Local Gemma', isOffline: false };
 }
@@ -161,7 +166,17 @@ Return ONLY a valid JSON object (no Markdown code fences):
 Note: sold / becha / bikri / diya / sell / de do = "sale"; received / aaya / stock aaya / mangwaya = "restock".`;
 
   if (primaryEngine === 'gemma') {
-    // STRICT GEMMA MODE: Guarantee zero cloud costs and zero Gemini quota usage!
+    // STRICT GEMMA / ON-DEVICE MODE: Guarantee zero cloud costs and zero Gemini quota usage!
+    if (isLocalEngineReady()) {
+      try {
+        const res = await webllmParseVoiceCommand(text, productNames);
+        if (res && (res.items?.length || res.product || res.heard || res.name || res.order?.length || res.sales?.length || res.cart?.length)) {
+          return res;
+        }
+      } catch (e) {
+        console.warn('On-device WebLLM parse error, checking local server fallback:', e.message);
+      }
+    }
     if (!set().aiBaseUrl) {
       throw new Error('Local Gemma server not configured — shifting to Built-in Smart Offline Parser ($0 Cost, No quota used)');
     }

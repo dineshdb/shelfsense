@@ -45,13 +45,24 @@ export function vSell(S, U) {
     <div class="voice">
     <button class="micbtn ${v.recording ? 'on' : ''}" data-a="listen" ${ready || hasSpeechRec ? '' : 'disabled'} aria-label="${v.recording ? 'Stop recording' : 'Start recording'}">${v.recording ? ICONS.stop : ICONS.mic}</button>
     <div class="wave ${v.recording ? 'on' : ''}">${'<i></i>'.repeat(13)}</div>
-    <div class="trans ${v.transcript ? '' : 'ph2'}" id="trans">${v.transcript ? '“' + esc(v.transcript) + '”' : v.handsFree ? '🎙️ Listening hands-free… speak items freely' : v.recording ? 'Recording… speak item or tap to stop' : v.busy ? 'Understanding…' : (handsFreeOn ? 'Tap the mic or Start "Take Order" — English, हिन्दी, नेपाली, Español' : 'Tap the mic or type to sell — English, हिन्दी, नेपाली, Español')}</div>
+    <div class="trans ${v.transcript ? '' : 'ph2'}" id="trans">${v.transcript ? '“' + esc(v.transcript) + '”' : v.handsFree ? '🎙️ Listening hands-free… speak items freely' : v.recording ? 'Recording… speak item or tap to stop' : v.busy ? 'Understanding…' : (!hasSpeechRec ? '🦊 Firefox: Live mic needs Chrome/Edge. Type commands below!' : (handsFreeOn ? 'Tap the mic or Start "Take Order" — English, हिन्दी, नेपाली, Español' : 'Tap the mic or type to sell — English, हिन्दी, नेपाली, Español'))}</div>
     ${v.busy ? '<div class="muted"><div class="spin dk" style="width:22px;height:22px;border-width:3px"></div>Understanding…</div>' : ''}</div>
     ${handsFreeOn ? `
     <button class="btn ${v.handsFree ? 'danger' : 'pri'} w mt" data-a="toggleTakeOrder" style="display:flex;align-items:center;justify-content:center;gap:8px;font-size:14px">
       ${v.handsFree ? '⏹️ Stop "Take Order" Mode' : '🎙️ Start "Take Order" Hands-Free (Beta)'}
     </button>` : ''}
     <div class="inrow mt"><input class="f" id="typed" placeholder="…or type: sold 2 milk to Ramesh on credit"><button class="btn pri" data-a="typed">Add</button></div>
+    <div style="display:flex;align-items:center;gap:6px;margin-top:7px;flex-wrap:wrap">
+      <span class="muted small" style="font-size:11px;font-weight:600">⚡ Quick sell:</span>
+      <button class="chip" data-a="testVoiceCmd" data-v="2 milk" style="font-size:11px;padding:3px 8px">🥛 2 Milk</button>
+      <button class="chip" data-a="testVoiceCmd" data-v="sold 2 bread to Ramesh on credit" style="font-size:11px;padding:3px 8px">📖 2 Bread to Ramesh (Khata)</button>
+      <button class="chip" data-a="testVoiceCmd" data-v="1 sugar and 2 rice" style="font-size:11px;padding:3px 8px">🍚 1 Sugar + 2 Rice</button>
+      <button class="chip" data-a="testVoiceCmd" data-v="3 eggs" style="font-size:11px;padding:3px 8px">🥚 3 Eggs</button>
+    </div>
+    ${!hasSpeechRec ? `
+    <div class="badge b-info small mt" style="display:flex;align-items:center;gap:6px;padding:7px 11px;font-size:11.5px;border-radius:var(--radius);margin-top:8px">
+      <span>🦊 <b>Firefox notice:</b> Firefox lacks the native Web Speech API. Type commands above or click the Quick Sell chips (or use Chrome/Edge for instant mic voice).</span>
+    </div>` : ''}
     ${v.statusMsg ? `<div class="badge b-ok mt small" style="display:flex;align-items:center;gap:6px;padding:7px 11px;font-size:12px;margin-top:10px;border-radius:var(--radius)"><span>${esc(v.statusMsg)}</span></div>` : ''}
     ${handsFreeOn ? `
     <div class="muted small" style="margin-top:10px;font-size:11.5px;display:flex;align-items:center;gap:5px;flex-wrap:wrap">

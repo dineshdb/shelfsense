@@ -81,6 +81,7 @@ import "../styles/global.css";
       import { encodeWav, b64of } from "../modules/audio.js";
       import { S, U, set, prod, findByBarcode, save } from "../modules/state.js";
       import { aiReady, aiLabel, gemini, aiTranscribe, geminiDetect, receiptParse, fetchActiveModels, parseVoiceCommand } from "../modules/ai.js";
+      import { initWebLLMEngine, unloadWebLLMEngine, deleteLocalModelStorage, isLocalEngineReady, engineState, checkWebGPUSupport } from "../modules/webllm.js";
       import { recordKhataDebit, recordKhataPayment } from "../modules/khata.js";
       import { initCloudSync } from "../modules/cloud.js";
 
@@ -391,16 +392,25 @@ function commit(mode) {
 }
 
 /* ---------- Voice Operations ---------- */
+let latestRecognizedSpeech = '';
+
 async function listen() {
   if (U.voice.recording) return stopRec();
-  if (!aiReady() && !hasSpeechRec) return toast('Voice needs an AI backend — Settings → AI backend', 'warn', 5000);
-  if (!navigator.mediaDevices?.getUserMedia && !hasSpeechRec) return toast('Microphone needs HTTPS — type the command instead', 'warn', 5000);
+  if (!hasSpeechRec && (set().voiceEngine === 'gemma' || !set().apiKey)) {
+    toast('🦊 Firefox does not support in-browser live speech. Please type your command below, or use Google Chrome / Microsoft Edge for instant microphone recording!', 'warn', 6000);
+    const typedEl = $('#typed');
+    if (typedEl) { typedEl.focus(); }
+    return;
+  }
+  if (!aiReady() && !hasSpeechRec && !set().apiKey) return toast('Voice needs an AI backend or Chrome/Edge — Settings → AI backend', 'warn', 5000);
+  if (!navigator.mediaDevices?.getUserMedia && !hasSpeechRec) return toast('Microphone needs HTTPS or Chrome/Edge — type the command instead', 'warn', 5000);
   startRec();
 }
 
 async function startRec() {
   if (!S.products.length) toast('Tip: add products first (Scan or Load demo)', 'warn');
   const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  latestRecognizedSpeech = '';
   if (SpeechRec) {
     if (U.voice.rec?.nativeRec) {
       try { U.voice.rec.nativeRec.abort(); } catch (e) {}
@@ -408,7 +418,7 @@ async function startRec() {
     }
     try {
       const rec = new SpeechRec();
-      rec.continuous = !!U.voice.handsFree;
+      rec.continuous = true;
       rec.interimResults = true;
       rec.lang = set().lang || 'en-US';
       U.voice.transcript = '';
@@ -416,28 +426,38 @@ async function startRec() {
       render();
       rec.onresult = e => {
         let interim = '';
+        let finalConcat = '';
         for (let i = e.resultIndex; i < e.results.length; ++i) {
           const res = e.results[i];
           const phrase = res[0]?.transcript || '';
           if (res.isFinal) {
-            const finalPhrase = phrase.trim();
-            if (finalPhrase) {
-              U.voice.transcript = finalPhrase;
-              render();
-              command(finalPhrase, 'voice');
-            }
+            finalConcat += ' ' + phrase;
           } else {
-            interim += phrase;
+            interim += ' ' + phrase;
           }
         }
-        if (interim.trim()) {
+        finalConcat = finalConcat.trim();
+        interim = interim.trim();
+        if (finalConcat) {
+          latestRecognizedSpeech = finalConcat;
+          U.voice.transcript = finalConcat;
+          render();
+          command(finalConcat, 'voice');
+        } else if (interim) {
+          latestRecognizedSpeech = interim;
           const el = $('#trans');
-          if (el) { el.textContent = '“' + interim.trim() + '”'; el.classList.remove('ph2'); }
+          if (el) { el.textContent = '“' + interim + '”'; el.classList.remove('ph2'); }
         }
       };
       rec.onend = () => {
         U.voice.rec = null;
         U.voice.recording = false;
+        const pending = (latestRecognizedSpeech || '').trim();
+        latestRecognizedSpeech = '';
+        if (pending) {
+          U.voice.transcript = pending;
+          command(pending, 'voice');
+        }
         if (U.voice.handsFree && U.tab === 'sell') {
           setTimeout(() => {
             if (U.voice.handsFree && !U.voice.recording && U.tab === 'sell') {
@@ -454,14 +474,25 @@ async function startRec() {
           U.voice.handsFree = false;
           U.voice.recording = false;
           U.voice.rec = null;
-          toast('Microphone access denied', 'err');
+          toast('🎙️ Microphone access denied — click the 🔒 icon in Chrome address bar to Allow microphone', 'err', 5000);
           render();
-        } else if (e.error === 'no-speech') {
-          // In hands-free mode, pause between utterances is expected; onend will loop back
-        } else if (!U.voice.handsFree) {
+        } else if (e.error === 'audio-capture') {
           U.voice.recording = false;
           U.voice.rec = null;
-          startRecAudioContext();
+          toast('🎙️ Microphone capture failed — check if mic is plugged in and unmuted in Windows sound settings', 'err', 5000);
+          render();
+        } else if (e.error === 'no-speech') {
+          if (!U.voice.handsFree) {
+            U.voice.recording = false;
+            U.voice.rec = null;
+            toast('🎙️ No speech detected — please speak closer to the mic or type command below', 'warn', 4000);
+            render();
+          }
+        } else if (e.error === 'network') {
+          U.voice.recording = false;
+          U.voice.rec = null;
+          toast('🎙️ Speech service network error — check connection or type command below', 'err', 4000);
+          render();
         }
       };
       U.voice.rec = { nativeRec: rec };
@@ -502,7 +533,17 @@ async function stopRec() {
   const r = U.voice.rec;
   if (!r) return;
   if (r.nativeRec) {
+    const pending = (latestRecognizedSpeech || '').trim();
+    latestRecognizedSpeech = '';
+    U.voice.recording = false;
+    U.voice.rec = null;
     try { r.nativeRec.stop(); } catch (e) {}
+    render();
+    if (pending) {
+      U.voice.transcript = pending;
+      render();
+      command(pending, 'voice');
+    }
     return;
   }
   clearTimeout(U.voice.recCap);
@@ -719,6 +760,13 @@ async function command(text, source) {
     }
   } else {
     P = localCommandParse(text, S.products);
+  }
+  // FAIL-SAFE: If the AI model returned 0 items, immediately fall back to deterministic local parser!
+  if (!P || !P.items || !P.items.length) {
+    const fallbackP = localCommandParse(text, S.products);
+    if (fallbackP && fallbackP.items && fallbackP.items.length) {
+      P = fallbackP;
+    }
   }
   U.voice.busy = false;
   if (!P.items.length) {
@@ -1182,6 +1230,10 @@ const ACT = {
       command(t, 'typed');
     }
   },
+  testVoiceCmd: el => {
+    const cmd = el?.dataset?.v;
+    if (cmd) command(cmd, 'typed');
+  },
   fetchModels: async () => {
     const res = await fetchActiveModels();
     if (res) render();
@@ -1384,10 +1436,77 @@ const ACT = {
     save();
     render();
   },
-  toggle: el => {
-    S.settings[el.dataset.v] = !S.settings[el.dataset.v];
+  toggle: async el => {
+    const k = el.dataset.v;
+    S.settings[k] = !S.settings[k];
     save();
     el.classList.toggle('on');
+    if (k === 'localAiEnabled') {
+      if (S.settings.localAiEnabled) {
+        await ACT.startLocalAi();
+      } else {
+        await ACT.unloadLocalAi();
+      }
+    }
+  },
+  startLocalAi: async () => {
+    const gpu = checkWebGPUSupport();
+    if (!gpu.supported) {
+      alert('WebGPU is required for on-device AI:\n\n' + gpu.reason);
+      S.settings.localAiEnabled = false;
+      save();
+      render();
+      return;
+    }
+    const modelId = set().localAiModel || 'gemma3-1b-it-q4f16_1-MLC';
+    try {
+      S.settings.localAiEnabled = true;
+      save();
+      render();
+      toast('⏳ Preparing model download... Please keep this tab active.', 'ok', 3500);
+      let rafId = null;
+      let lastProgress = -1;
+      let lastText = '';
+      await initWebLLMEngine(modelId, state => {
+        lastProgress = state.progress;
+        lastText = state.text;
+        if (!rafId) {
+          rafId = requestAnimationFrame(() => {
+            rafId = null;
+            if (U.tab === 'settings') {
+              const textEl = document.querySelector('#localAiProgressText');
+              const fillEl = document.querySelector('#localAiProgressFill');
+              if (textEl) textEl.textContent = `${lastText} (${lastProgress}%)`;
+              if (fillEl) fillEl.style.width = `${lastProgress}%`;
+            }
+          });
+        }
+      });
+      if (rafId) cancelAnimationFrame(rafId);
+      render();
+      toast('🟢 Local AI model active & cached in browser! 100% offline ready.', 'ok', 5000);
+    } catch (err) {
+      S.settings.localAiEnabled = false;
+      save();
+      render();
+      toast('❌ Local AI failed: ' + (err.message || 'WebGPU error'), 'err', 5000);
+    }
+  },
+  unloadLocalAi: async () => {
+    await unloadWebLLMEngine();
+    S.settings.localAiEnabled = false;
+    save();
+    render();
+    toast('⏹️ Model sleeping — 100% phone RAM freed', 'ok', 3500);
+  },
+  deleteLocalAiCache: async () => {
+    const modelId = set().localAiModel || 'gemma3-1b-it-q4f16_1-MLC';
+    if (!confirm('Delete downloaded model weights from phone browser storage to free up disk space?')) return;
+    await deleteLocalModelStorage(modelId);
+    S.settings.localAiEnabled = false;
+    save();
+    render();
+    toast('🗑️ Model weights deleted from phone storage', 'ok', 3000);
   },
   showkey: el => {
     const k = $('#key');
@@ -1446,7 +1565,7 @@ document.addEventListener('change', ev => {
     const k = t.dataset.set;
     S.settings[k] = t.type === 'number' ? (+t.value || 0) : t.value.trim();
     save();
-    if (k === 'model' || k === 'voiceEngine') render();
+    if (k === 'model' || k === 'voiceEngine' || k === 'localAiModel') render();
     $('#storeName').textContent = set().storeName;
     const pill = $('#enginePill');
     pill.className = 'pill ' + (aiReady() ? '' : 'off');

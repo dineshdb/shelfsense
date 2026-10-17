@@ -59,6 +59,8 @@ export const DEF = {
   voiceEngine: 'auto',
   setupDone: false,
   handsFreeEnabled: false,
+  localAiEnabled: false,
+  localAiModel: 'gemma3-1b-it-q4f16_1-MLC',
   lang: 'en-US',
   autoApply: true,
   speak: true,
