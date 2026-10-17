@@ -63,7 +63,16 @@ export function vSettings(S, U) {
       <div class="muted small mt">For all AI features on YOUR machine: your merve gateway (<code>http://localhost:8283/v1</code>, model <code>gemma-4-e4b</code>) or any OpenAI-compatible server. Tip: open <code>http://localhost:8283</code> itself — it serves this app next to the AI, same origin, so no browser permission is needed (llama.cpp + CORS shim does the rest; ollama needs OLLAMA_ORIGINS=*).</div>
     </div>
     <button class="btn sec w mt" data-a="test">🔌 Test AI connection</button>`)}
-  ${sec(3, '🎙️', 't-info', 'Voice', `${tg('autoApply', 'Auto-record', 'Save immediately when every product is recognized')}${tg('speak', 'Spoken confirmation', 'Reads back the sale and low-stock warnings')}`)}
+  ${sec(3, '🎙️', 't-info', 'Voice & Audio POS', `
+    <label class="lb">Voice Engine Strategy</label>
+    <select class="f" data-set="voiceEngine">
+      <option value="auto" ${(s.voiceEngine || 'auto') === 'auto' ? 'selected' : ''}>🔄 Smart Auto (Local Gemma with Cloud Fallback)</option>
+      <option value="gemma" ${s.voiceEngine === 'gemma' ? 'selected' : ''}>⚡ Local Gemma ($0 Cost · 100% Offline Ready)</option>
+      <option value="gemini" ${s.voiceEngine === 'gemini' ? 'selected' : ''}>☁️ Google Gemini Cloud (Multilingual Pro)</option>
+    </select>
+    <div class="muted small mt" style="margin-bottom:10px">💡 <b>Zero Cost Strategy:</b> Local Gemma processes cashier voice billing locally on your device with $0 token cost and keeps working during network outages.</div>
+    ${tg('handsFreeEnabled', '🎙️ Hands-Free "Take Order" Mode (Beta)', 'Enable continuous listening with "Take order", "Done", and 3-second auto-save countdown.')}
+    ${tg('autoApply', 'Auto-record', 'Save immediately when every product is recognized')}${tg('speak', 'Spoken confirmation', 'Reads back the sale and low-stock warnings')}`)}
   ${sec(4, '📊', 't-warn', 'Reorder rules', `
     <div class="g3"><div><label class="lb">Lead days</label>${inp('leadDays', 'number', 'min="0"')}</div><div><label class="lb">Cover days</label>${inp('coverDays', 'number', 'min="1"')}</div><div><label class="lb">Safety days</label>${inp('safetyDays', 'number', 'min="0"')}</div></div>
     <label class="lb">Sales history window (days)</label>${inp('windowDays', 'number', 'min="7"')}

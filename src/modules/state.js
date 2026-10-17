@@ -49,7 +49,9 @@ export const U = {
     rec: null,
     customer: '',
     paymentMode: 'cash',
-    view: 'bill'
+    view: 'bill',
+    handsFree: false,
+    statusMsg: ''
   },
   inv: {
     q: '',

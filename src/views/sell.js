@@ -12,21 +12,56 @@ export function vSell(S, U) {
   const cur = set().currency;
   const hasSpeechRec = typeof window !== 'undefined' && ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window);
 
+  const handsFreeOn = !!set().handsFreeEnabled;
+
   if (v.view === 'khata') return vKhata(S, U);
 
   const topProducts = S.products.slice(0, 8);
+  const currentEngine = set().voiceEngine || 'auto';
   let o = `<div class="sellgrid">
     <div class="chips" style="grid-column:1/-1;margin:0 0 -4px">
       <button class="chip on" data-a="sellView" data-v="bill">🎙️ Voice & Quick POS</button>
       <button class="chip" data-a="sellView" data-v="khata">📖 Khata Ledger (${Object.keys(S.khata || {}).length})</button>
     </div>
-    <div class="card"><div class="ch"><h2><span class="ico t-info">🎙️</span>Voice sales</h2><span class="sub">${esc(set().lang)}${hasSpeechRec ? ' · Fast Web Speech' : ''}${v.recording ? ' · recording' : ''}</span></div><div class="voice">
-    <button class="micbtn ${v.recording ? 'on' : ''}" data-a="listen" ${ready ? '' : 'disabled'} aria-label="${v.recording ? 'Stop recording' : 'Start recording'}">${v.recording ? ICONS.stop : ICONS.mic}</button>
+    <div class="card"><div class="ch"><h2><span class="ico t-info">🎙️</span>Voice sales</h2>
+      <div class="chips" style="margin:0;gap:4px">
+        <button class="chip ${currentEngine === 'gemma' ? 'on' : ''}" data-a="voiceEngineToggle" data-v="gemma" title="100% Free · Runs locally on device">⚡ Gemma ($0)</button>
+        <button class="chip ${currentEngine === 'gemini' ? 'on' : ''}" data-a="voiceEngineToggle" data-v="gemini" title="Cloud Multilingual Pro">☁️ Gemini</button>
+        <button class="chip ${currentEngine === 'auto' ? 'on' : ''}" data-a="voiceEngineToggle" data-v="auto" title="Auto: Local Gemma with Cloud Fallback">🔄 Auto</button>
+      </div>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin:-4px 0 10px;flex-wrap:wrap;gap:6px">
+      <div class="chips" style="margin:0;gap:4px">
+        <button class="chip ${set().lang === 'en-US' ? 'on' : ''}" data-a="setLang" data-v="en-US" title="English (US)">🇺🇸 EN</button>
+        <button class="chip ${set().lang === 'en-IN' ? 'on' : ''}" data-a="setLang" data-v="en-IN" title="Indian English / Hinglish">🇮🇳 Hinglish</button>
+        <button class="chip ${set().lang === 'hi-IN' ? 'on' : ''}" data-a="setLang" data-v="hi-IN" title="हिन्दी (Hindi)">🇮🇳 हिन्दी</button>
+        <button class="chip ${set().lang === 'ne-NP' ? 'on' : ''}" data-a="setLang" data-v="ne-NP" title="नेपाली (Nepali)">🇳🇵 नेपाली</button>
+        <button class="chip ${set().lang === 'es-ES' ? 'on' : ''}" data-a="setLang" data-v="es-ES" title="Español">🇪🇸 ES</button>
+      </div>
+      <span class="badge ${currentEngine === 'gemma' ? 'b-ok' : currentEngine === 'gemini' ? 'b-info' : 'b-new'}" style="font-size:10px">
+        ${currentEngine === 'gemma' ? '⚡ 100% Free · Offline POS' : currentEngine === 'gemini' ? '☁️ Cloud Gemini Pro' : '🔄 Auto Fallback'}
+      </span>
+    </div>
+    <div class="voice">
+    <button class="micbtn ${v.recording ? 'on' : ''}" data-a="listen" ${ready || hasSpeechRec ? '' : 'disabled'} aria-label="${v.recording ? 'Stop recording' : 'Start recording'}">${v.recording ? ICONS.stop : ICONS.mic}</button>
     <div class="wave ${v.recording ? 'on' : ''}">${'<i></i>'.repeat(13)}</div>
-    <div class="trans ${v.transcript ? '' : 'ph2'}" id="trans">${v.transcript ? '“' + esc(v.transcript) + '”' : v.recording ? 'Recording… tap again to send' : v.busy ? 'Transcribing…' : 'Tap the mic, speak, tap again — English, हिन्दी, नेपाली, Español'}</div>
+    <div class="trans ${v.transcript ? '' : 'ph2'}" id="trans">${v.transcript ? '“' + esc(v.transcript) + '”' : v.handsFree ? '🎙️ Listening hands-free… speak items freely' : v.recording ? 'Recording… speak item or tap to stop' : v.busy ? 'Understanding…' : (handsFreeOn ? 'Tap the mic or Start "Take Order" — English, हिन्दी, नेपाली, Español' : 'Tap the mic or type to sell — English, हिन्दी, नेपाली, Español')}</div>
     ${v.busy ? '<div class="muted"><div class="spin dk" style="width:22px;height:22px;border-width:3px"></div>Understanding…</div>' : ''}</div>
-    <div class="inrow mt"><input class="f" id="typed" placeholder="…or type: sold 2 milk to Ramesh on credit" ${ready ? '' : 'disabled'}><button class="btn pri" data-a="typed" ${ready ? '' : 'disabled'}>Add</button></div>
-    ${ready ? '' : `<div class="muted small mt">Voice and typed commands are parsed by the AI backend — configure Gemini or your local server in Settings.</div>`}
+    ${handsFreeOn ? `
+    <button class="btn ${v.handsFree ? 'danger' : 'pri'} w mt" data-a="toggleTakeOrder" style="display:flex;align-items:center;justify-content:center;gap:8px;font-size:14px">
+      ${v.handsFree ? '⏹️ Stop "Take Order" Mode' : '🎙️ Start "Take Order" Hands-Free (Beta)'}
+    </button>` : ''}
+    <div class="inrow mt"><input class="f" id="typed" placeholder="…or type: sold 2 milk to Ramesh on credit"><button class="btn pri" data-a="typed">Add</button></div>
+    ${v.statusMsg ? `<div class="badge b-ok mt small" style="display:flex;align-items:center;gap:6px;padding:7px 11px;font-size:12px;margin-top:10px;border-radius:var(--radius)"><span>${esc(v.statusMsg)}</span></div>` : ''}
+    ${handsFreeOn ? `
+    <div class="muted small" style="margin-top:10px;font-size:11.5px;display:flex;align-items:center;gap:5px;flex-wrap:wrap">
+      <span>🗣️ <b>Voice flow:</b> Say <i>"Take order"</i> to start · <i>"Done / Ho gaya"</i> to finish · <i>"Next / Agla"</i> to save · <i>"Cancel"</i></span>
+    </div>` : `
+    <div class="muted small" style="margin-top:10px;font-size:11.5px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px">
+      <span>🗣️ Tap mic to speak or type commands above.</span>
+      <button class="btn ghost sm" data-a="tab" data-v="settings" style="font-size:11px;padding:2px 8px">🧪 Hands-Free POS (Beta)</button>
+    </div>`}
+    <div class="muted small mt">⚡ <b>Instant Voice POS:</b> Works offline with built-in smart parser, or connect Gemini/Local Gemma in Settings for advanced multilingual understanding.</div>
     ${topProducts.length ? `
       <div style="border-top:1px solid var(--line);margin-top:14px;padding-top:10px">
         <div class="flex between" style="align-items:center;margin-bottom:6px"><span class="muted small" style="font-weight:600">⚡ Fast tap checkout</span><span class="muted small">Tap to add</span></div>

@@ -233,7 +233,16 @@ function normalizeModelParse(r, text, products) {
   const defIntent = r && r.intent === "restock" ? "restock" : "sale";
   const customer = r && typeof r.customer === "string" && r.customer.trim() ? r.customer.trim() : null;
   const paymentMode = r && (r.paymentMode === "khata" || r.paymentMode === "credit" || r.mode === "khata" || r.mode === "credit") ? "khata" : "cash";
-  const raw = r && Array.isArray(r.items) ? r.items : [];
+  let raw = [];
+  if (Array.isArray(r)) {
+    raw = r;
+  } else if (r && Array.isArray(r.items)) {
+    raw = r.items;
+  } else if (r && Array.isArray(r.products)) {
+    raw = r.products;
+  } else if (r && (r.product || r.heard)) {
+    raw = [r];
+  }
   const items = raw.map((it) => {
     it = it && typeof it === "object" ? it : {};
     const p =
@@ -329,4 +338,125 @@ function analyze(products, moves, s, now = Date.now()) {
   return { windowDays, rows };
 }
 
-export const Core = { strip, matchProduct, convertQty, normalizeModelParse, analyze, dailySeries };
+function localCommandParse(text, products = []) {
+  const raw = String(text || '').trim();
+  let clean = raw.toLowerCase();
+
+  // 1. Detect customer (e.g. "Ramesh ko...", "to Ramesh", "for Ramesh", "Ramesh udhaar", "Ramesh ka bill")
+  let customer = null;
+  const custMatch = clean.match(/(?:(?:to|for|customer)\s+([a-z\u0900-\u097F]+))|([a-z\u0900-\u097F]+)\s*(?:ko|ka|ke|bhai|ji)\b/i);
+  if (custMatch) {
+    const candidate = (custMatch[1] || custMatch[2] || '').trim();
+    const ignoreWords = ['sold', 'sell', 'give', 'credit', 'udhaar', 'khata', 'cash', 'bill', 'order', 'ek', 'do', 'teen', 'me', 'mai', 'hai', 'tha'];
+    if (candidate && !ignoreWords.includes(candidate)) {
+      customer = candidate.charAt(0).toUpperCase() + candidate.slice(1);
+    }
+  }
+
+  // 2. Detect payment mode (credit / khata / udhaar)
+  const isKhata = /(\budhaar\b|\bkhata\b|\bcredit\b|\btab\b|\bhisab\b|\blikh\s*lo\b|\bbaad\s*me\b|उधार|खाता|क्रेडिट)/i.test(clean);
+  const paymentMode = isKhata ? 'khata' : 'cash';
+
+  // 3. Detect intent (sale vs restock)
+  const isRestock = /(\breceived\b|\baaya\b|\bstock\b|\bmangwaya\b|\brestock\b|\binward\b|आया|स्टॉक)/i.test(clean);
+  const defaultIntent = isRestock ? 'restock' : 'sale';
+
+  // 4. Clean away conversational words and command wrappers
+  clean = clean
+    .replace(/(?:sold|sell|sale|give\s*me|give|diya|becha|bikri|de\s*do|dena|mangwaya|received|restock|add|want|i\s*want|chahiye|mangta|please|kripya|put|daal\s*do|rakh\s*do|pack\s*karo|pack\s*kar\s*do)\b/gi, '')
+    .replace(/(?:to|for|customer)\s+[a-z\u0900-\u097F]+/gi, '')
+    .replace(/[a-z\u0900-\u097F]+\s*(?:ko|ka|ke|bhai|ji)\b/gi, '')
+    .replace(/(?:udhaar|khata|credit|cash|likh\s*lo|baad\s*me|hisab)\b/gi, '')
+    .replace(/^[.,!?;:]+|[.,!?;:]+$/g, '')
+    .trim();
+
+  // 5. Split multiple items by 'and', 'aur', 'or', ',', 'tatha'
+  const itemClauses = clean.split(/\s*(?:,|and|aur|तथा|और|\+)\s*/i).filter(Boolean);
+  const items = [];
+
+  const numberMap = {
+    'aadha': 0.5, 'आधा': 0.5, 'half': 0.5,
+    'paav': 0.25, 'पाव': 0.25, 'quarter': 0.25,
+    'dedh': 1.5, 'डेढ़': 1.5,
+    'dhai': 2.5, 'ढाई': 2.5,
+    'ek': 1, 'एक': 1, 'one': 1, 'a': 1, 'an': 1,
+    'do': 2, 'दो': 2, 'two': 2,
+    'teen': 3, 'तीन': 3, 'three': 3,
+    'chaar': 4, 'char': 4, 'चार': 4, 'four': 4,
+    'paanch': 5, 'panch': 5, 'पांच': 5, 'पाँच': 5, 'five': 5,
+    'chhah': 6, 'chheh': 6, 'छह': 6, 'six': 6,
+    'saat': 7, 'सात': 7, 'seven': 7,
+    'aath': 8, 'आठ': 8, 'eight': 8,
+    'nau': 9, 'नौ': 9, 'nine': 9,
+    'das': 10, 'दस': 10, 'ten': 10,
+    'darjan': 12, 'दर्जन': 12, 'dozen': 12
+  };
+
+  for (const clause of (itemClauses.length ? itemClauses : [clean])) {
+    let c = clause.trim();
+    if (!c) continue;
+
+    let qty = 1;
+    let unit = null;
+
+    const words = c.split(/\s+/);
+    let remWords = [];
+
+    for (let i = 0; i < words.length; i++) {
+      const w = words[i].toLowerCase();
+      if (!isNaN(parseFloat(w)) && isFinite(w)) {
+        qty = parseFloat(w);
+      } else if (numberMap[w] !== undefined) {
+        qty = numberMap[w];
+      } else if (/^(kg|kgs|kilo|kilos|किलो)$/i.test(w)) {
+        unit = 'kg';
+      } else if (/^(g|gm|gms|gram|grams|ग्राम)$/i.test(w)) {
+        unit = 'g';
+      } else if (/^(l|lt|lts|liter|liters|litre|litres|लीटर)$/i.test(w)) {
+        unit = 'L';
+      } else if (/^(ml|mls|milliliter)$/i.test(w)) {
+        unit = 'ml';
+      } else if (/^(pack|packs|packet|packets|पैकेट)$/i.test(w)) {
+        unit = 'pack';
+      } else if (/^(dozen|doz|darjan|दर्जन)$/i.test(w)) {
+        unit = 'dozen';
+      } else {
+        remWords.push(words[i]);
+      }
+    }
+
+    const queryProduct = remWords.join(' ').trim();
+    if (queryProduct) {
+      const match = matchProduct(queryProduct, products);
+      items.push({
+        intent: defaultIntent,
+        query: queryProduct,
+        qty: qty || 1,
+        unit: unit || match.product?.unit || 'unit',
+        productId: match.product ? match.product.id : null
+      });
+    }
+  }
+
+  // Fallback if no items extracted
+  if (!items.length && clean) {
+    const match = matchProduct(clean, products);
+    items.push({
+      intent: defaultIntent,
+      query: clean,
+      qty: 1,
+      unit: match.product?.unit || 'unit',
+      productId: match.product ? match.product.id : null
+    });
+  }
+
+  return {
+    text,
+    intent: defaultIntent,
+    customer,
+    paymentMode,
+    items
+  };
+}
+
+export const Core = { strip, matchProduct, convertQty, normalizeModelParse, analyze, dailySeries, localCommandParse };

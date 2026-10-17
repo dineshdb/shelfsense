@@ -225,3 +225,46 @@ test("dailySeries: one sale lands on today\u2019s bucket", () => {
   assert.equal(s[13].value, 5);
   assert.equal(s[12].value, 0);
 });
+
+/* ---------- localCommandParse ---------- */
+test("localCommandParse: parses simple English numeric product and quantity ('2 sugar')", () => {
+  const res = Core.localCommandParse("2 sugar", PRODUCTS);
+  assert.equal(res.items.length, 1);
+  assert.equal(res.items[0].qty, 2);
+  assert.equal(res.items[0].productId, "p1");
+  assert.equal(res.paymentMode, "cash");
+});
+
+test("localCommandParse: parses Hindi/Hinglish with fractions and XL aliases ('aadha kilo shakkar')", () => {
+  const res = Core.localCommandParse("aadha kilo shakkar", PRODUCTS);
+  assert.equal(res.items.length, 1);
+  assert.equal(res.items[0].qty, 0.5);
+  assert.equal(res.items[0].unit, "kg");
+  assert.equal(res.items[0].productId, "p1"); // "shakkar" -> "sugar" -> p1
+});
+
+test("localCommandParse: extracts customer and khata payment mode ('sold 2 milk to Ramesh on credit')", () => {
+  const res = Core.localCommandParse("sold 2 milk to Ramesh on credit", PRODUCTS);
+  assert.equal(res.customer, "Ramesh");
+  assert.equal(res.paymentMode, "khata");
+  assert.equal(res.items.length, 1);
+  assert.equal(res.items[0].qty, 2);
+  assert.equal(res.items[0].productId, "p2");
+});
+
+test("localCommandParse: parses multi-item sentences ('2 sugar and 1 milk')", () => {
+  const res = Core.localCommandParse("2 sugar and 1 milk", PRODUCTS);
+  assert.equal(res.items.length, 2);
+  assert.equal(res.items[0].qty, 2);
+  assert.equal(res.items[0].productId, "p1");
+  assert.equal(res.items[1].qty, 1);
+  assert.equal(res.items[1].productId, "p2");
+});
+
+test("localCommandParse: handles Hindi word numbers ('do doodh')", () => {
+  const res = Core.localCommandParse("do doodh", PRODUCTS);
+  assert.equal(res.items.length, 1);
+  assert.equal(res.items[0].qty, 2);
+  assert.equal(res.items[0].productId, "p2"); // "doodh" -> "milk" -> p2
+});
+

@@ -80,7 +80,7 @@ import "../styles/global.css";
       import { $, esc, uid, money, fq, daysTxt, ago, emoji, beep, toast, speak, fileToURL, resize, drawBoxes } from "../modules/utils.js";
       import { encodeWav, b64of } from "../modules/audio.js";
       import { S, U, set, prod, findByBarcode, save } from "../modules/state.js";
-      import { aiReady, aiLabel, gemini, aiTranscribe, geminiDetect, receiptParse, fetchActiveModels } from "../modules/ai.js";
+      import { aiReady, aiLabel, gemini, aiTranscribe, geminiDetect, receiptParse, fetchActiveModels, parseVoiceCommand } from "../modules/ai.js";
       import { recordKhataDebit, recordKhataPayment } from "../modules/khata.js";
       import { initCloudSync } from "../modules/cloud.js";
 
@@ -402,43 +402,65 @@ async function startRec() {
   if (!S.products.length) toast('Tip: add products first (Scan or Load demo)', 'warn');
   const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (SpeechRec) {
+    if (U.voice.rec?.nativeRec) {
+      try { U.voice.rec.nativeRec.abort(); } catch (e) {}
+      U.voice.rec = null;
+    }
     try {
       const rec = new SpeechRec();
-      rec.continuous = false;
+      rec.continuous = !!U.voice.handsFree;
       rec.interimResults = true;
       rec.lang = set().lang || 'en-US';
       U.voice.transcript = '';
       U.voice.recording = true;
       render();
       rec.onresult = e => {
-        let interim = '', final = '';
+        let interim = '';
         for (let i = e.resultIndex; i < e.results.length; ++i) {
-          if (e.results[i].isFinal) final += e.results[i][0].transcript;
-          else interim += e.results[i][0].transcript;
+          const res = e.results[i];
+          const phrase = res[0]?.transcript || '';
+          if (res.isFinal) {
+            const finalPhrase = phrase.trim();
+            if (finalPhrase) {
+              U.voice.transcript = finalPhrase;
+              render();
+              command(finalPhrase, 'voice');
+            }
+          } else {
+            interim += phrase;
+          }
         }
-        const text = (final || interim).trim();
-        if (text) {
-          U.voice.transcript = text;
+        if (interim.trim()) {
           const el = $('#trans');
-          if (el) { el.textContent = '“' + text + '”'; el.classList.remove('ph2'); }
+          if (el) { el.textContent = '“' + interim.trim() + '”'; el.classList.remove('ph2'); }
         }
       };
       rec.onend = () => {
-        U.voice.recording = false;
         U.voice.rec = null;
-        render();
-        if (U.voice.transcript.trim()) {
-          command(U.voice.transcript.trim(), 'voice');
+        U.voice.recording = false;
+        if (U.voice.handsFree && U.tab === 'sell') {
+          setTimeout(() => {
+            if (U.voice.handsFree && !U.voice.recording && U.tab === 'sell') {
+              startRec();
+            }
+          }, 300);
+        } else {
+          render();
         }
       };
       rec.onerror = e => {
-        console.warn('Native speech recognition fallback:', e);
-        U.voice.recording = false;
-        U.voice.rec = null;
+        console.warn('Native speech recognition event:', e.error);
         if (e.error === 'not-allowed') {
+          U.voice.handsFree = false;
+          U.voice.recording = false;
+          U.voice.rec = null;
           toast('Microphone access denied', 'err');
           render();
-        } else if (!U.voice.transcript) {
+        } else if (e.error === 'no-speech') {
+          // In hands-free mode, pause between utterances is expected; onend will loop back
+        } else if (!U.voice.handsFree) {
+          U.voice.recording = false;
+          U.voice.rec = null;
           startRecAudioContext();
         }
       };
@@ -476,6 +498,7 @@ async function startRecAudioContext() {
 }
 
 async function stopRec() {
+  U.voice.handsFree = false;
   const r = U.voice.rec;
   if (!r) return;
   if (r.nativeRec) {
@@ -513,39 +536,194 @@ async function stopRec() {
   }
 }
 
+let saveCountdownTimer = null;
+let saveCountdownSecs = 3;
+
+function cancelSaveCountdown() {
+  if (saveCountdownTimer) {
+    clearInterval(saveCountdownTimer);
+    saveCountdownTimer = null;
+  }
+  const popup = document.querySelector('#saveCountdownPopup');
+  if (popup) popup.remove();
+  toast('Auto-save cancelled', 'warn', 2000);
+}
+
+function confirmSaveNow() {
+  if (saveCountdownTimer) {
+    clearInterval(saveCountdownTimer);
+    saveCountdownTimer = null;
+  }
+  const popup = document.querySelector('#saveCountdownPopup');
+  if (popup) popup.remove();
+
+  billApply(false);
+
+  U.voice.bill = [];
+  U.voice.customer = '';
+  U.voice.statusMsg = '🎙️ Order saved! Ready for next customer...';
+  render();
+
+  if (hasSpeechRec && !U.voice.recording && U.voice.handsFree) {
+    setTimeout(() => {
+      startRec();
+    }, 400);
+  }
+}
+
+function startSaveCountdown() {
+  cancelSaveCountdown();
+  const inc = U.voice.bill.filter(b => b.include);
+  const total = inc.reduce((sum, b) => {
+    if (b.intent !== 'sale') return sum;
+    const pr = prod(b.productId);
+    if (!pr) return sum;
+    const q = +Core.convertQty(+b.qty, b.unit || null, pr.unit).toFixed(3);
+    return sum + q * pr.price;
+  }, 0);
+
+  saveCountdownSecs = 3;
+  const overlay = document.createElement('div');
+  overlay.className = 'save-popup-overlay';
+  overlay.id = 'saveCountdownPopup';
+  overlay.innerHTML = `
+    <div class="save-popup-card">
+      <div class="save-popup-icon">💾</div>
+      <h3>Saving Order · ${money(total, set().currency)}</h3>
+      <p>Auto-saving and starting next order in <b><span id="countdownSecs">3</span>s</b>...</p>
+      <div class="countdown-bar"><div class="countdown-fill" id="countdownFill" style="width:100%"></div></div>
+      <div class="g2 mt">
+        <button class="btn pri" data-a="confirmSaveNow">⚡ Save Now</button>
+        <button class="btn ghost" data-a="cancelSaveCountdown">✕ Cancel</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+
+  setTimeout(() => {
+    const fill = document.querySelector('#countdownFill');
+    if (fill) fill.style.width = '0%';
+  }, 40);
+
+  saveCountdownTimer = setInterval(() => {
+    saveCountdownSecs--;
+    const num = document.querySelector('#countdownSecs');
+    if (num) num.textContent = String(saveCountdownSecs);
+    if (saveCountdownSecs <= 0) {
+      confirmSaveNow();
+    }
+  }, 1000);
+}
+
+function localCommandParse(text, products) {
+  return Core.localCommandParse(text, products);
+}
+
 async function command(text, source) {
   U.voice.transcript = text;
-  if (!aiReady()) return toast('Parsing needs an AI backend — Settings → AI backend', 'warn', 5000);
-  if (!S.products.length) {
+  const rawTrimmed = (text || '').trim();
+  const norm = rawTrimmed.toLowerCase().replace(/^[.,!?;:]+|[.,!?;:]+$/g, '');
+
+  const handsFreeEnabled = !!set().handsFreeEnabled;
+
+  // 1. Meta-command: "Take order" / "Accept order" / "Bill shuru karo" (only active when Hands-Free flag is ON)
+  const isTakeOrder = handsFreeEnabled && /(?:take|accept|start|create|make|receive|begin|get)\s*(?:an?|the|my|this|new)?\s*order\b|(?:bill|order)\s*(?:banao|lo|le\s*lo|shuru|karo|start)|(?:naya|new)\s*(?:bill|order)|(?:take|start|accept)\s*order|टेक\s*ऑर्डर|बिल\s*बनाओ|ऑर्डर\s*लो|ऑर्डर\s*शुरू|नया\s*बिल/i.test(norm);
+  if (isTakeOrder) {
+    U.voice.transcript = '';
+    U.voice.handsFree = true;
+    U.voice.bill = [];
+    U.voice.customer = '';
+    U.voice.statusMsg = '🎙️ Taking order... speak items (say "Done" or "Ho gaya" when finished)';
+    toast('🎙️ "Take order" active — speak items freely!', 'ok', 3500);
     render();
-    return toast('Add products first — Scan the store or Load demo', 'warn');
+
+    const remainder = norm.replace(/.*?(?:(?:take|accept|start|create|make|receive|begin|get)\s*(?:an?|the|my|this|new)?\s*order|(?:bill|order)\s*(?:banao|lo|le\s*lo|shuru|karo|start)|(?:naya|new)\s*(?:bill|order)|(?:take|start|accept)\s*order|टेक\s*ऑर्डर|बिल\s*बनाओ|ऑर्डर\s*लो|ऑर्डर\s*शुरू|नया\s*बिल)[,\s]*(?:for\s*)?/i, '').trim();
+
+    if (!U.voice.recording || !U.voice.rec?.nativeRec?.continuous) {
+      if (U.voice.rec?.nativeRec) {
+        try { U.voice.rec.nativeRec.abort(); } catch (e) {}
+        U.voice.rec = null;
+      }
+      setTimeout(() => startRec(), 150);
+    }
+
+    if (remainder && remainder.length > 2) {
+      setTimeout(() => command(remainder, source), 300);
+    }
+    return;
+  }
+
+  // 2. Meta-command: "Done" / "Ho gaya" / "Bas" / "Complete"
+  const isDone = handsFreeEnabled && /(?:\bdone\b|\ball\s*done\b|\bthat'?s\s*all\b|\bthat\s*is\s*all\b|\bfinish(?:ed)?\b|\bcomplete(?:d)?\b|\bho\s*gaya\b|\bhogaya\b|\bbas\b|\bbaas\b|\bitna\s*hi\b|\bkhatam\b|\bstop\s*(?:order)?\b|हो\s*गया|बस|खत्म|पूरा)/i.test(norm);
+  if (isDone) {
+    U.voice.transcript = '';
+    if (!U.voice.bill.length) {
+      U.voice.statusMsg = 'No items added yet. Speak items or say "Cancel".';
+      render();
+      toast('No items on bill yet', 'warn');
+      return;
+    }
+    U.voice.statusMsg = '✅ Order complete! Say "Next" to save & take next order, or "Cancel" to abort.';
+    render();
+    toast('✅ Order complete! Say "Next" to save.', 'ok', 3500);
+    return;
+  }
+
+  // 3. Meta-command: "Next" / "Agla" / "Naya bill" / "Save"
+  const isNext = handsFreeEnabled && /(?:\bnext(?:\s*(?:order|customer|bill))?\b|\bagla(?:\s*customer)?\b|\bagle\b|\bsave(?:\s*(?:order|bill))?\b|\bcheckout\b|\bcomplete\s*sale\b|अगला|अगले|सेव)/i.test(norm);
+  if (isNext) {
+    U.voice.transcript = '';
+    if (!U.voice.bill.length) {
+      toast('No active order to save. Say "Take order" to start.', 'warn');
+      return;
+    }
+    startSaveCountdown();
+    return;
+  }
+
+  // 4. Meta-command: "Cancel" / "Radd" / "Discard"
+  const isCancel = handsFreeEnabled && /(?:\bcancel(?:\s*(?:order|bill))?\b|\bclear(?:\s*bill)?\b|\bradd\b|\bhatao\b|\bdiscard\b|\babort\b|कैंसिल|रद्द|हटाओ)/i.test(norm);
+  if (isCancel) {
+    U.voice.transcript = '';
+    if (saveCountdownTimer) {
+      cancelSaveCountdown();
+      return;
+    }
+    U.voice.bill = [];
+    U.voice.customer = '';
+    U.voice.statusMsg = '';
+    render();
+    toast('🚫 Order cancelled / cleared', 'warn', 2500);
+    return;
+  }
+
+  if (!S.products.length) {
+    demo();
+    toast('✨ Store catalog initialized — continuing with order!', 'ok', 2500);
   }
   U.voice.busy = true;
   render();
   let P;
-  try {
-    const r = await gemini([{
-      text: `You parse sales and inventory voice commands from a grocery shop owner. The command may be in English, Spanish, Hindi (हिन्दी) or Nepali (नेपाली) — including Devanagari script, Devanagari digits (०१२३४५६७८९), and romanized words (chini, bhaat, chamal, chiya, nun, tel, dal, aloo, tamatar, doodh). Half = 0.5, quarter = 0.25, "एक पाउ" ≈ 0.5 kg, "आधा किलो" = 0.5 kg, "पाउ" ≈ 0.55 kg if unsure use 0.5.
-Detect:
-1) Customer name if mentioned (e.g. "Ramesh ko...", "Amit bhai ka...", "John owes...", "sell to Sarah", "Rohan ke khate me") -> customer: string or null
-2) Payment method: if on credit/tab/udhaar/khata (e.g. "udhaar pe", "khata me likho", "on credit", "tab", "paise baad me denge") -> paymentMode: "khata", else "cash".
-3) Items: array of {"intent":"sale"|"restock", "product": the inventory name copied VERBATIM — never translate, translate-from or shorten it; null only if nothing in the inventory fits (match by meaning across languages: चिनी/cheeni→Sugar, चामल/भात/chamal/bhaat→Rice, चिया→Tea, नुन→Salt, तेल→oil, दाल→lentils, आलु/aloo→Potato, गोलभेंडा/tamatar→Tomato, दूध/doodh→Milk),"heard": the owner's words for that item, in the original language,"qty": number,"unit":"kg"|"g"|"L"|"ml"|"unit"|"pack"|"dozen"|null}.
-
-Inventory product names: ${JSON.stringify(S.products.map(p => p.name))}.
-Command: "${text}"
-Return ONLY JSON: {"customer": string|null, "paymentMode": "cash"|"khata", "items": [...]}. sold/bikri/bikri bhayo/becha/vendí/बिक्री/बेचा = sale; received/arrived/delivery/llegaron/आयो/आए/पसलमा आयो/मंगाएको/खरिद = restock.`
-    }]);
-    P = Core.normalizeModelParse(r, text, S.products);
-  } catch (e) {
-    U.voice.busy = false;
-    render();
-    return toast('AI parsing unavailable: ' + e.message, 'warn', 5000);
+  if (aiReady()) {
+    try {
+      const r = await parseVoiceCommand(text, S.products.map(p => p.name));
+      P = Core.normalizeModelParse(r, text, S.products);
+    } catch (e) {
+      console.warn('AI parse shifted/failed:', e.message);
+      const isGemma = (set().voiceEngine === 'gemma');
+      if (isGemma) {
+        toast('⚡ Gemma ($0): Using Built-in Offline Engine ($0 Cost, No quota used)', 'ok', 3000);
+      } else if (e.message && (e.message.includes('quota') || e.message.includes('429'))) {
+        toast('⚠️ ' + e.message, 'warn', 4500);
+      }
+      P = localCommandParse(text, S.products);
+    }
+  } else {
+    P = localCommandParse(text, S.products);
   }
   U.voice.busy = false;
   if (!P.items.length) {
     render();
     toast("I didn't catch a product. Try: “two bread sold”", 'warn');
-    speak('Sorry, I did not catch the product.', set());
     return;
   }
   if (P.customer) U.voice.customer = P.customer;
@@ -561,9 +739,9 @@ Return ONLY JSON: {"customer": string|null, "paymentMode": "cash"|"khata", "item
     include: true,
     source
   }));
+  U.voice.statusMsg = `🧾 Added ${P.items.length} line${P.items.length > 1 ? 's' : ''}. Speak more items or say "Done / Ho gaya".`;
   render();
   toast('🧾 ' + P.items.length + ' line' + (P.items.length > 1 ? 's' : '') + (P.customer ? ` for ${P.customer}` : '') + (P.paymentMode === 'khata' ? ' (📖 Khata)' : ''), 'ok', 2600);
-  speak((P.customer ? P.customer + ': ' : '') + (P.items.length === 1 ? 'One item on the bill.' : P.items.length + ' items on the bill.'), set());
 }
 
 function billApply(print) {
@@ -778,8 +956,10 @@ function demo() {
     ['Pasta 500g', 'Pantry', 'pack', 26, 0.90, 0.60, 1.2, ['pasta', 'spaghetti'], '8001234567893'],
     ['Ground Coffee 250g', 'Pantry', 'pack', 10, 4.50, 3.20, 0.45, ['coffee', 'cafe'], '8001234567894'],
     ['Black Beans', 'Grains', 'kg', 16, 1.80, 1.30, 1.1, ['beans', 'frijoles'], '012345678906'],
-    ['Bar Soap', 'Personal Care', 'unit', 34, 0.80, 0.50, 0.15, ['soap', 'jabon'], '012345678907'],
-    ['Salt 1kg', 'Pantry', 'unit', 22, 0.50, 0.30, 0.06, ['salt', 'sal'], '8901234567895']
+    ['Salt 1kg', 'Pantry', 'unit', 22, 0.50, 0.30, 0.06, ['salt', 'sal'], '8901234567895'],
+    ['Potatoes', 'Vegetables', 'kg', 18, 0.90, 0.60, 2.0, ['potato', 'patata', 'aloo', 'alu'], '4072'],
+    ['Wheat Flour (Atta)', 'Grains', 'kg', 25, 1.20, 0.85, 2.5, ['atta', 'aata', 'flour', 'harina'], '8901234567896'],
+    ['Tea (Chai)', 'Beverages', 'pack', 15, 2.50, 1.80, 1.0, ['tea', 'chai', 'chiya', 'te'], '8901234567897']
   ];
 
   S.products = [];
@@ -969,7 +1149,39 @@ const ACT = {
   pick: el => $('#' + el.dataset.v).click(),
   commit: el => commit(el.dataset.v),
   listen,
-  typed: () => { const t = $('#typed').value.trim(); if (t) command(t, 'typed'); },
+  toggleTakeOrder: () => {
+    if (!set().handsFreeEnabled) {
+      toast('Enable Hands-Free POS (Beta) in Settings first', 'warn');
+      return;
+    }
+    if (U.voice.handsFree) {
+      U.voice.handsFree = false;
+      stopRec();
+      U.voice.statusMsg = '';
+      render();
+      toast('⏹️ Hands-free mode stopped', 'ok', 2000);
+    } else {
+      U.voice.handsFree = true;
+      U.voice.bill = [];
+      U.voice.customer = '';
+      U.voice.statusMsg = '🎙️ Taking order... speak items (say "Done" or "Ho gaya" when finished)';
+      render();
+      toast('🎙️ "Take order" mode active — speak items freely!', 'ok', 3500);
+      if (U.voice.rec?.nativeRec) {
+        try { U.voice.rec.nativeRec.abort(); } catch (e) {}
+        U.voice.rec = null;
+      }
+      startRec();
+    }
+  },
+  typed: () => {
+    const el = $('#typed');
+    const t = el?.value.trim();
+    if (t) {
+      el.value = '';
+      command(t, 'typed');
+    }
+  },
   fetchModels: async () => {
     const res = await fetchActiveModels();
     if (res) render();
@@ -980,6 +1192,39 @@ const ACT = {
   billRemove: el => { U.voice.bill = U.voice.bill.filter(b => b.id !== el.dataset.v); render(); },
   sellView: el => { U.voice.view = el.dataset.v; render(); },
   payMode: el => { U.voice.paymentMode = el.dataset.v; render(); },
+  setLang: el => {
+    set().lang = el.dataset.v;
+    save();
+    render();
+    const lName = el.dataset.v === 'hi-IN' ? 'हिन्दी (Hindi)' : el.dataset.v === 'en-IN' ? 'Hinglish / Indian English' : el.dataset.v === 'ne-NP' ? 'नेपाली (Nepali)' : el.dataset.v === 'es-ES' ? 'Español' : 'English (US)';
+    toast('🌐 Voice Language: ' + lName, 'ok', 2200);
+    if (U.voice.recording) {
+      stopRec();
+      setTimeout(startRec, 200);
+    }
+  },
+  voiceEngineToggle: el => {
+    S.settings.voiceEngine = el.dataset.v;
+    save();
+    render();
+    if (el.dataset.v === 'gemma') {
+      const hasLocalUrl = !!set().aiBaseUrl;
+      const msg = hasLocalUrl
+        ? '⚡ Voice Engine: Local Gemma ($0 Cost · Server Connected)'
+        : '⚡ Voice Engine: Local Gemma ($0 Cost · Using Built-in Offline Parser · Zero Quota Used)';
+      toast(msg, 'ok', 3500);
+    } else if (el.dataset.v === 'gemini') {
+      const hasKey = !!set().apiKey;
+      const msg = hasKey
+        ? '☁️ Voice Engine: Cloud Gemini Pro'
+        : '☁️ Voice Engine: Cloud Gemini (Add your API key in Settings)';
+      toast(msg, hasKey ? 'ok' : 'warn', 3000);
+    } else {
+      toast('🔄 Voice Engine: Smart Auto (Local Gemma with Cloud Fallback)', 'ok', 2500);
+    }
+  },
+  confirmSaveNow: () => confirmSaveNow(),
+  cancelSaveCountdown: () => cancelSaveCountdown(),
   quickSaleTap: el => {
     const p = prod(el.dataset.v);
     if (p) {
@@ -1201,7 +1446,7 @@ document.addEventListener('change', ev => {
     const k = t.dataset.set;
     S.settings[k] = t.type === 'number' ? (+t.value || 0) : t.value.trim();
     save();
-    if (k === 'model') render();
+    if (k === 'model' || k === 'voiceEngine') render();
     $('#storeName').textContent = set().storeName;
     const pill = $('#enginePill');
     pill.className = 'pill ' + (aiReady() ? '' : 'off');
@@ -1215,6 +1460,22 @@ document.addEventListener('change', ev => {
       if (m.product && !d.price && U.scan.mode !== 'rcpt') d.price = m.product.price;
       render();
     } else if (t.dataset.k === 'include') render();
+  }
+  if (t.dataset.bi !== undefined && t.dataset.bk === 'productId') {
+    const b = U.voice.bill[+t.dataset.bi];
+    b.productId = t.value;
+    const p = prod(t.value);
+    if (p && b.query && b.query !== '?' && b.query.trim()) {
+      const qTerm = b.query.trim();
+      p.aliases = p.aliases || [];
+      const qLower = qTerm.toLowerCase();
+      if (!p.aliases.some(a => a.toLowerCase() === qLower) && p.name.toLowerCase() !== qLower) {
+        p.aliases.push(qTerm);
+        save();
+        toast(`💡 ShelfSense learned: "${qTerm}" → ${p.name}`, 'ok', 3500);
+      }
+    }
+    render();
   }
   if (t.id === 'photoIn') {
     const fs = [...t.files].slice(0, 6);
