@@ -19,7 +19,7 @@ export function loadSavedState() {
   };
 
   // Migration: Automatically upgrade deprecated models to gemini-3.8-flash
-  if (state.settings.model === 'gemini-2.5-flash') {
+  if (!state.settings.model || state.settings.model === 'gemini-2.5-flash' || state.settings.model === 'gemini-2.0-flash' || state.settings.model === 'gemini-1.5-flash') {
     state.settings.model = 'gemini-3.8-flash';
   }
 
@@ -31,7 +31,9 @@ export const S = loadSavedState();
 export const U = {
   tab: 'home',
   scan: {
+    images: [],
     image: null,
+    activeIdx: 0,
     dets: [],
     busy: false,
     status: '',
@@ -39,7 +41,14 @@ export const U = {
     engine: '',
     mode: 'shelf',
     rcpt: null,
-    barcode: null
+    barcode: null,
+    processing: {
+      active: false,
+      current: 0,
+      total: 0,
+      totalProducts: 0,
+      totalUnits: 0
+    }
   },
   voice: {
     transcript: '',

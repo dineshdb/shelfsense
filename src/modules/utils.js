@@ -99,7 +99,7 @@ export const resize = (src, max = 1280) => new Promise((res, rej) => {
   im.src = src;
 });
 
-export function drawBoxes(cv, w, h, dets) {
+export function drawBoxes(cv, w, h, dets, activeIdx = 0) {
   if (!cv) return;
   cv.width = w;
   cv.height = h;
@@ -120,8 +120,17 @@ export function drawBoxes(cv, w, h, dets) {
   ];
 
   dets.forEach((d, i) => {
-    if (!d.box || d.box.length !== 4 || d.include === false) return;
-    const [y0, x0, y1, x1] = d.box.map(Number);
+    let box = null;
+    if (d.boxes && d.boxes[activeIdx]) {
+      box = d.boxes[activeIdx];
+    } else if (d.imageIdx !== undefined) {
+      if (d.imageIdx === activeIdx) box = d.box;
+    } else if (activeIdx === 0) {
+      box = d.box;
+    }
+
+    if (!box || box.length !== 4 || d.include === false) return;
+    const [y0, x0, y1, x1] = box.map(Number);
     const X = x0 / 1000 * w;
     const Y = y0 / 1000 * h;
     const W = (x1 - x0) / 1000 * w;

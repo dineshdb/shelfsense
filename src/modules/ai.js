@@ -8,7 +8,7 @@ export const aiReady = () => (set().aiMode === 'custom' && set().aiBaseUrl) || !
 
 export const aiLabel = () => isLocalEngineReady() ? 'On-Device AI' : (set().aiMode === 'custom' && set().aiBaseUrl ? `Local ${set().aiModel}` : 'Gemini AI');
 
-export const fetchT = (url, opts, ms = 60000) => {
+export const fetchT = (url, opts, ms = 90000) => {
   return fetch(url, { ...opts, signal: AbortSignal.timeout(ms) })
     .catch(e => {
       throw new Error(
@@ -231,10 +231,11 @@ Note: sold / becha / bikri / diya / sell / de do = "sale"; received / aaya / sto
 export async function geminiDetect(imgs) {
   const prompt = `You are the inventory vision system of a small grocery store. ${imgs.length > 1 ? `These ${imgs.length} images are frames from one video sweep of the same shelves; merge them and do NOT double-count items seen in several frames.` : 'Analyze the shelf image.'}
 Identify every distinct retail product. Read brand and size from packaging when legible (e.g. "Coca-Cola 600ml"), else use a clear generic name ("Bananas", "White Sugar 1kg").
-Return ONLY a JSON array, one object per distinct product: {"name": string, "category": one of ${JSON.stringify(Object.keys(CAT))}, "count": integer visible units (estimate kg for loose produce), "unit": "unit"|"kg"|"L"|"pack", "confidence": 0-1, "price_guess": typical local retail price number or null, "box_2d": [ymin,xmin,ymax,xmax] normalized 0-1000 around all units of that product in the FIRST image, or null}.`;
+Return ONLY a JSON array, one object per distinct product: {"name": string, "category": one of ${JSON.stringify(Object.keys(CAT))}, "count": integer visible units (estimate kg for loose produce), "unit": "unit"|"kg"|"L"|"pack", "confidence": 0-1, "price_guess": typical local retail price number or null, "box_2d": [ymin,xmin,ymax,xmax] normalized 0-1000 around all units of that product in this image, or null}.`;
 
   const r = await gemini([{ text: prompt }, ...imgs.map(d => ({ inline_data: { mime_type: 'image/jpeg', data: d.split(',')[1] } }))]);
-  return (Array.isArray(r) ? r : (r.products || r.items || [])).filter(x => x && x.name).map(x => ({
+  const list = Array.isArray(r) ? r : (r.products || r.items || (typeof r === 'object' && r !== null ? Object.values(r).find(Array.isArray) : []) || []);
+  return list.filter(x => x && x.name).map(x => ({
     name: x.name,
     category: x.category,
     count: Math.round(+x.count || 1),

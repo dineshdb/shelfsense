@@ -48,6 +48,8 @@ export const NAME_EMOJI = [
 
 export const UNITS = ['unit', 'kg', 'g', 'L', 'ml', 'pack'];
 
+export const MAX_SCAN_IMAGES = 5;
+
 export const DEF = {
   storeName: 'My Grocery Store',
   currency: '$',
@@ -61,6 +63,7 @@ export const DEF = {
   handsFreeEnabled: false,
   localAiEnabled: false,
   localAiModel: 'gemma3-1b-it-q4f16_1-MLC',
+  maxScanImages: 5,
   lang: 'en-US',
   autoApply: true,
   speak: true,

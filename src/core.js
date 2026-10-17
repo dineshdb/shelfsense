@@ -474,4 +474,68 @@ function localCommandParse(text, products = []) {
   };
 }
 
-export const Core = { strip, matchProduct, convertQty, normalizeModelParse, analyze, dailySeries, localCommandParse };
+/**
+ * Merges and aggregates detections across multiple scanned images, summing quantities
+ * for identical or matching products, tracking multi-photo citations, and computing total unique counts.
+ */
+function aggregateScanDetections(dets = [], existingProducts = []) {
+  const mergedMap = new Map();
+
+  dets.forEach((d) => {
+    if (!d || !d.name) return;
+    const cleanName = String(d.name).trim();
+    const key = cleanName.toLowerCase();
+    const count = Math.max(0, +d.count || 1);
+    const imgIdx = d.imageIdx !== undefined ? d.imageIdx : 0;
+
+    if (mergedMap.has(key)) {
+      const existing = mergedMap.get(key);
+      existing.count = +(existing.count + count).toFixed(3);
+      existing.photosCount = (existing.photosCount || 1) + 1;
+      if (d.confidence && d.confidence > (existing.confidence || 0)) {
+        existing.confidence = d.confidence;
+      }
+      if (d.cost != null && existing.cost == null) existing.cost = d.cost;
+      if (d.price != null && existing.price == null) existing.price = d.price;
+      if (d.box) {
+        existing.boxes = existing.boxes || {};
+        existing.boxes[imgIdx] = d.box;
+        if (!existing.box) existing.box = d.box;
+      }
+    } else {
+      const m = matchProduct(cleanName, existingProducts);
+      const matched = m.product;
+      const boxes = {};
+      if (d.box) {
+        boxes[imgIdx] = d.box;
+      }
+      mergedMap.set(key, {
+        name: cleanName,
+        category: d.category || (matched ? matched.category : "Other"),
+        count,
+        unit: d.unit || (matched ? matched.unit : "unit"),
+        cost: d.cost != null ? +d.cost : (matched?.cost || null),
+        price: d.price != null ? +d.price : (matched?.price || null),
+        confidence: d.confidence || 0.85,
+        box: d.box || null,
+        boxes,
+        imageIdx: imgIdx,
+        include: true,
+        matchId: matched ? matched.id : null,
+        photosCount: 1,
+      });
+    }
+  });
+
+  const items = Array.from(mergedMap.values());
+  const totalProducts = items.length;
+  const totalUnits = items.reduce((acc, it) => acc + (+it.count || 0), 0);
+
+  return {
+    items,
+    totalProducts,
+    totalUnits: Math.round(totalUnits * 100) / 100,
+  };
+}
+
+export const Core = { strip, matchProduct, convertQty, normalizeModelParse, analyze, dailySeries, localCommandParse, aggregateScanDetections };

@@ -76,7 +76,7 @@ import "../styles/global.css";
 
       // Core modules & view components
       import { Core } from "../core.js";
-      import { DAY, DEF, CAT, UNITS, ICONS } from "../modules/constants.js";
+      import { DAY, DEF, CAT, UNITS, ICONS, MAX_SCAN_IMAGES } from "../modules/constants.js";
       import { $, esc, uid, money, fq, daysTxt, ago, emoji, beep, toast, speak, fileToURL, resize, drawBoxes } from "../modules/utils.js";
       import { encodeWav, b64of } from "../modules/audio.js";
       import { S, U, set, prod, findByBarcode, save } from "../modules/state.js";
@@ -133,7 +133,7 @@ function render() {
     if (v && stream) { v.srcObject = stream; v.play().catch(() => {}); }
     const img = $('#shot');
     if (img) {
-      const draw = () => drawBoxes($('#shotCv'), img.naturalWidth, img.naturalHeight, U.scan.dets);
+      const draw = () => drawBoxes($('#shotCv'), img.naturalWidth, img.naturalHeight, U.scan.dets, U.scan.activeIdx || 0);
       img.complete ? draw() : (img.onload = draw);
     }
   }
@@ -219,13 +219,51 @@ function capture() {
   c.width = v.videoWidth * k; c.height = v.videoHeight * k;
   c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
   const url = c.toDataURL('image/jpeg', 0.85);
-  stopCam();
-  analyze([url]);
+
+  if (U.scan.mode === 'barcode') {
+    stopCam();
+    if (hasBarcodeDetector) {
+      const im = new Image();
+      im.onload = async () => {
+        try {
+          const det = new window.BarcodeDetector();
+          const codes = await det.detect(im);
+          if (codes?.length && codes[0].rawValue) {
+            onBarcodeScanned(codes[0].rawValue);
+            return;
+          }
+        } catch (e) {}
+        toast('No barcode recognized in photo — try another', 'warn');
+      };
+      im.src = url;
+    } else {
+      toast('Live camera or typing barcode recommended on this browser', 'warn');
+    }
+    return;
+  }
+
+  const maxImages = set().maxScanImages || MAX_SCAN_IMAGES || 5;
+  U.scan.images = U.scan.images || [];
+  U.scan.images.push(url);
+  U.scan.activeIdx = U.scan.images.length - 1;
+  U.scan.image = url;
+  beep();
+
+  if (U.scan.images.length >= maxImages) {
+    stopCam();
+    toast(`📸 Maximum ${maxImages} photos captured! Ready to scan.`, 'ok', 3500);
+    render();
+  } else {
+    toast(`📸 Photo #${U.scan.images.length} snapped (${U.scan.images.length}/${maxImages}) — snap more or tap "Scan"`, 'ok', 2500);
+    render();
+  }
 }
 
 async function analyze(imgs) {
   const sc = U.scan;
-  sc.image = imgs[0];
+  sc.images = Array.isArray(imgs) ? imgs : [imgs];
+  sc.activeIdx = 0;
+  sc.image = sc.images[0] || null;
   sc.dets = [];
   sc.rcpt = null;
   sc.busy = true;
@@ -236,28 +274,38 @@ async function analyze(imgs) {
       render();
       return toast('Reading invoices needs an AI backend — Settings → AI backend', 'warn', 5000);
     }
-    sc.status = 'Reading the wholesale invoice with ' + aiLabel() + '…';
+    sc.status = 'Reading ' + sc.images.length + ' wholesale invoice page' + (sc.images.length > 1 ? 's' : '') + ' with ' + aiLabel() + '…';
     render();
     let r = null;
     try {
-      r = await receiptParse(imgs);
+      r = await receiptParse(sc.images);
       sc.engine = aiLabel() + ' · wholesale invoice';
     } catch (e) {
       toast('Invoice read failed: ' + e.message + ' — try a flatter, well-lit shot', 'err', 6000);
     }
     sc.busy = false;
     sc.rcpt = r;
-    sc.dets = (r ? r.items : []).map(x => {
+    const rawItems = (r ? r.items : []).map(x => ({
+      name: x.name,
+      category: 'Other',
+      count: Math.max(0, +x.count || 1),
+      unit: x.unit,
+      cost: x.cost != null ? +x.cost : null,
+      price: x.mrp != null ? +x.mrp : null,
+      confidence: x.confidence
+    }));
+    const agg = Core.aggregateScanDetections(rawItems, S.products);
+    sc.dets = agg.items.map(x => {
       const m = Core.matchProduct(x.name, S.products);
       const p = m.product;
       const unitCost = +x.cost || null;
       const oldCost = p?.cost || null;
       const costDiff = (oldCost && unitCost) ? +(unitCost - oldCost).toFixed(2) : null;
-      const sellPrice = x.mrp || p?.price || (unitCost ? +(unitCost * 1.35).toFixed(2) : null);
+      const sellPrice = x.price || p?.price || (unitCost ? +(unitCost * 1.35).toFixed(2) : null);
       return {
         name: x.name,
         category: p?.category || 'Other',
-        count: Math.max(0, +x.count || 1),
+        count: x.count,
         unit: UNITS.includes(x.unit) ? x.unit : 'unit',
         cost: unitCost,
         oldCost,
@@ -266,12 +314,17 @@ async function analyze(imgs) {
         confidence: x.confidence,
         box: null,
         include: true,
-        matchId: p?.id || null
+        matchId: p?.id || null,
+        photosCount: x.photosCount || 1
       };
     });
     render();
-    if (sc.dets.length) toast(`Parsed ${sc.dets.length} invoice line${sc.dets.length > 1 ? 's' : ''} — check costs & margins`, 'ok');
-    else toast('No invoice lines recognized — try a closer, well-lit photo', 'warn', 5000);
+    if (sc.dets.length) {
+      const totUnits = sc.dets.filter(d => d.include).reduce((s, d) => s + (+d.count || 0), 0);
+      toast(`Parsed ${sc.dets.length} invoice line${sc.dets.length > 1 ? 's' : ''} (${totUnits} total units) across ${sc.images.length} photo${sc.images.length > 1 ? 's' : ''} — check costs & margins`, 'ok', 4000);
+    } else {
+      toast('No invoice lines recognized — try a closer, well-lit photo', 'warn', 5000);
+    }
     return;
   }
 
@@ -280,33 +333,52 @@ async function analyze(imgs) {
     render();
     return toast('Scanning needs an AI backend — Settings → AI backend', 'warn', 5000);
   }
-  sc.status = aiLabel() + ` is identifying products in ${imgs.length} image${imgs.length > 1 ? 's' : ''}…`;
+  sc.status = `Scanning ${sc.images.length} photo${sc.images.length > 1 ? 's in parallel' : ''} with ${aiLabel()}…`;
   render();
-  let d = [];
+
+  let allDetections = [];
   try {
-    d = await geminiDetect(imgs);
+    // Dispatch individual detection requests simultaneously in parallel
+    const promises = sc.images.map((img, idx) =>
+      geminiDetect([img])
+        .then(dets => (dets || []).map(d => ({ ...d, imageIdx: idx })))
+        .catch(err => {
+          console.warn(`Detection on photo #${idx + 1} failed:`, err);
+          return [];
+        })
+    );
+    const results = await Promise.all(promises);
+    allDetections = results.flat();
     sc.engine = aiLabel();
   } catch (e) {
     toast(e.message, 'err', 5000);
   }
   sc.busy = false;
-  sc.dets = d.map(x => {
+  const agg = Core.aggregateScanDetections(allDetections, S.products);
+  sc.dets = agg.items.map(x => {
     const m = Core.matchProduct(x.name, S.products);
     return {
       name: x.name,
-      category: CAT[x.category] ? x.category : 'Other',
-      count: Math.max(0, +x.count || 1),
-      unit: UNITS.includes(x.unit) ? x.unit : 'unit',
-      price: m.product ? m.product.price : (+x.price || null),
+      category: CAT[x.category] ? x.category : (m.product?.category || 'Other'),
+      count: x.count,
+      unit: UNITS.includes(x.unit) ? x.unit : (m.product?.unit || 'unit'),
+      price: x.price || (m.product ? m.product.price : null),
       confidence: x.confidence,
       box: x.box,
+      boxes: x.boxes || {},
+      imageIdx: x.imageIdx,
       include: true,
-      matchId: m.product?.id || null
+      matchId: m.product?.id || null,
+      photosCount: x.photosCount || 1
     };
   });
   render();
-  if (d.length) toast(`Found ${d.length} product type${d.length > 1 ? 's' : ''}`, 'ok');
-  else toast('No products recognized — try a closer, well-lit photo', 'warn', 5000);
+  if (sc.dets.length) {
+    const totUnits = sc.dets.filter(d => d.include).reduce((s, d) => s + (+d.count || 0), 0);
+    toast(`Found ${sc.dets.length} product type${sc.dets.length > 1 ? 's' : ''} (${totUnits} total units) across ${sc.images.length} photo${sc.images.length > 1 ? 's' : ''}`, 'ok', 4000);
+  } else {
+    toast('No products recognized — try a closer, well-lit photo', 'warn', 5000);
+  }
 }
 
 function commit(mode) {
@@ -387,7 +459,7 @@ function commit(mode) {
     }, 400);
   }
 
-  U.scan.image = null; U.scan.dets = []; U.scan.rcpt = null;
+  U.scan.image = null; U.scan.images = []; U.scan.activeIdx = 0; U.scan.dets = []; U.scan.rcpt = null;
   go('stock');
 }
 
@@ -1158,6 +1230,8 @@ const ACT = {
     stopCam();
     U.scan.mode = el.dataset.v;
     U.scan.image = null;
+    U.scan.images = [];
+    U.scan.activeIdx = 0;
     U.scan.dets = [];
     U.scan.rcpt = null;
     U.scan.barcode = null;
@@ -1165,10 +1239,51 @@ const ACT = {
   },
   rescan: () => {
     U.scan.image = null;
+    U.scan.images = [];
+    U.scan.activeIdx = 0;
     U.scan.dets = [];
     U.scan.rcpt = null;
     U.scan.barcode = null;
     render();
+  },
+  selectScanImg: el => {
+    const idx = +el.dataset.idx;
+    if (U.scan.images && U.scan.images[idx]) {
+      U.scan.activeIdx = idx;
+      U.scan.image = U.scan.images[idx];
+      render();
+    }
+  },
+  removeScanImg: el => {
+    const idx = +el.dataset.idx;
+    if (U.scan.images && U.scan.images[idx] !== undefined) {
+      U.scan.images.splice(idx, 1);
+      if (U.scan.activeIdx >= U.scan.images.length) {
+        U.scan.activeIdx = Math.max(0, U.scan.images.length - 1);
+      }
+      U.scan.image = U.scan.images[U.scan.activeIdx] || null;
+      render();
+      toast('Photo removed', 'ok', 1500);
+    }
+  },
+  clearScanImgs: () => {
+    U.scan.images = [];
+    U.scan.image = null;
+    U.scan.activeIdx = 0;
+    U.scan.dets = [];
+    U.scan.rcpt = null;
+    render();
+    toast('Cleared staged photos', 'ok', 2000);
+  },
+  startScanAll: () => {
+    stopCam();
+    if (U.scan.images && U.scan.images.length) {
+      analyze(U.scan.images);
+    } else if (U.scan.image) {
+      analyze([U.scan.image]);
+    } else {
+      toast('No photos to scan', 'warn');
+    }
   },
   barcodeAction: el => {
     const p = prod(el.dataset.v);
@@ -1597,7 +1712,14 @@ document.addEventListener('change', ev => {
     render();
   }
   if (t.id === 'photoIn') {
-    const fs = [...t.files].slice(0, 6);
+    const maxImages = set().maxScanImages || MAX_SCAN_IMAGES || 5;
+    U.scan.images = U.scan.images || [];
+    const remaining = Math.max(0, maxImages - U.scan.images.length);
+    if (remaining <= 0) {
+      t.value = '';
+      return toast(`Maximum ${maxImages} photos already staged — clear some to add new ones`, 'warn', 3000);
+    }
+    const fs = [...t.files].slice(0, remaining);
     t.value = '';
     if (fs.length) {
       if (U.scan.mode === 'barcode') {
@@ -1622,7 +1744,13 @@ document.addEventListener('change', ev => {
         }).catch(e => toast(e.message, 'err'));
         return;
       }
-      Promise.all(fs.map(f => fileToURL(f).then(d => resize(d)))).then(analyze).catch(e => toast(e.message, 'err'));
+      Promise.all(fs.map(f => fileToURL(f).then(d => resize(d)))).then(urls => {
+        U.scan.images.push(...urls);
+        U.scan.activeIdx = U.scan.images.length - 1;
+        U.scan.image = U.scan.images[U.scan.activeIdx];
+        render();
+        toast(`📸 Added ${urls.length} photo${urls.length > 1 ? 's' : ''} (${U.scan.images.length}/${maxImages}) — ready to scan!`, 'ok', 3000);
+      }).catch(e => toast(e.message, 'err'));
     }
   }
   if (t.id === 'importIn') {

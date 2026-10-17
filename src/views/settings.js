@@ -125,7 +125,11 @@ export function vSettings(S, U) {
     </select>
     <div class="muted small mt" style="margin-bottom:10px">💡 <b>Zero Cost Strategy:</b> Local Gemma processes cashier voice billing locally on your device with $0 token cost and keeps working during network outages.</div>
     ${tg('handsFreeEnabled', '🎙️ Hands-Free "Take Order" Mode (Beta)', 'Enable continuous listening with "Take order", "Done", and 3-second auto-save countdown.')}
-    ${tg('autoApply', 'Auto-record', 'Save immediately when every product is recognized')}${tg('speak', 'Spoken confirmation', 'Reads back the sale and low-stock warnings')}`)}
+    ${tg('autoApply', 'Auto-record', 'Save immediately when every product is recognized')}${tg('speak', 'Spoken confirmation', 'Reads back the sale and low-stock warnings')}
+    <div class="mt" style="border-top:1px solid var(--line);padding-top:10px">
+      <label class="lb">Max Multi-Photo Scan Limit</label>${inp('maxScanImages', 'number', 'min="1" max="10"')}
+      <div class="muted small mt">Number of photos allowed per inventory shelf sweep or wholesale delivery bill (default: 5).</div>
+    </div>`)}
   ${sec(5, '📊', 't-warn', 'Reorder rules', `
     <div class="g3"><div><label class="lb">Lead days</label>${inp('leadDays', 'number', 'min="0"')}</div><div><label class="lb">Cover days</label>${inp('coverDays', 'number', 'min="1"')}</div><div><label class="lb">Safety days</label>${inp('safetyDays', 'number', 'min="0"')}</div></div>
     <label class="lb">Sales history window (days)</label>${inp('windowDays', 'number', 'min="7"')}
