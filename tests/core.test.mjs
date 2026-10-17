@@ -142,6 +142,19 @@ test("normalizeModelParse: per-item intents, verbatim names, heard-fallback matc
   assert.equal(P.items[1].qty, 3);
   assert.equal(P.items[1].unit, "dozen");
 });
+test("normalizeModelParse: extracts customer name and khata/credit paymentMode", () => {
+  const r = {
+    customer: "Ramesh Kumar",
+    paymentMode: "khata",
+    items: [
+      { intent: "sale", product: "Sugar", heard: "cheeni", qty: 2, unit: "kg" },
+    ],
+  };
+  const P = Core.normalizeModelParse(r, "Ramesh ko 2 kg cheeni udhaar likho", PRODUCTS);
+  assert.equal(P.customer, "Ramesh Kumar");
+  assert.equal(P.paymentMode, "khata");
+  assert.equal(P.items[0].productId, "p1");
+});
 test("normalizeModelParse: garbage from the model degrades, never throws", () => {
   const P = Core.normalizeModelParse(
     {

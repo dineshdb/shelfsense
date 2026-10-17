@@ -231,6 +231,8 @@ function convertQty(qty, said, pu) {
 const VALID_UNITS = new Set(["unit", "kg", "g", "L", "ml", "pack", "dozen"]);
 function normalizeModelParse(r, text, products) {
   const defIntent = r && r.intent === "restock" ? "restock" : "sale";
+  const customer = r && typeof r.customer === "string" && r.customer.trim() ? r.customer.trim() : null;
+  const paymentMode = r && (r.paymentMode === "khata" || r.paymentMode === "credit" || r.mode === "khata" || r.mode === "credit") ? "khata" : "cash";
   const raw = r && Array.isArray(r.items) ? r.items : [];
   const items = raw.map((it) => {
     it = it && typeof it === "object" ? it : {};
@@ -247,7 +249,7 @@ function normalizeModelParse(r, text, products) {
       productId: p ? p.id : null,
     };
   });
-  return { text, intent: defIntent, items };
+  return { text, intent: defIntent, customer, paymentMode, items };
 }
 
 function dailySeries(moves, days, now = Date.now()) {
