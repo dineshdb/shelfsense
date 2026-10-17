@@ -38,6 +38,26 @@ const PRODUCTS = [
     cost: 0.65,
     minStock: null,
   },
+  {
+    id: "p4",
+    name: "Potato",
+    aliases: ["potatoes"],
+    unit: "kg",
+    stock: 25,
+    price: 0.8,
+    cost: 0.5,
+    minStock: null,
+  },
+  {
+    id: "p5",
+    name: "Tomato",
+    aliases: ["tomatoes"],
+    unit: "kg",
+    stock: 15,
+    price: 1.5,
+    cost: 1.0,
+    minStock: null,
+  },
 ];
 const sale = (productId, daysAgo, qty, price = 1) => ({
   id: "m" + Math.random().toString(36).slice(2),
@@ -65,6 +85,17 @@ test("matchProduct: cross-language tokens (romanized and Devanagari) land on the
   assert.equal(Core.matchProduct("chini", PRODUCTS).product.id, "p1");
   assert.equal(Core.matchProduct("चिनी", PRODUCTS).product.id, "p1");
   assert.equal(Core.matchProduct("doodh", PRODUCTS).product.id, "p2");
+  assert.equal(Core.matchProduct("aloo", PRODUCTS).product.id, "p4");
+  assert.equal(Core.matchProduct("alu", PRODUCTS).product.id, "p4");
+  assert.equal(Core.matchProduct("आलु", PRODUCTS).product.id, "p4");
+  assert.equal(Core.matchProduct("tamatar", PRODUCTS).product.id, "p5");
+  assert.equal(Core.matchProduct("golbheda", PRODUCTS).product.id, "p5");
+});
+test("matchProduct: barcode matches deterministically with score 1.0", () => {
+  const prods = [{ id: "pb1", name: "Heinz Ketchup", barcode: "013000006408", aliases: [], unit: "unit" }];
+  const res = Core.matchProduct("013000006408", prods);
+  assert.equal(res.product?.id, "pb1");
+  assert.equal(res.score, 1.0);
 });
 test("matchProduct: typos still match, unrelated words do not", () => {
   assert.equal(Core.matchProduct("suger", PRODUCTS).product.id, "p1");

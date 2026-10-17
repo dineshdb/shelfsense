@@ -68,8 +68,8 @@ const XL = {
   केला: "banana",
   banana: "banana",
   platano: "banana",
-  aloo: "tomato",
-  alu: "tomato",
+  aloo: "potato",
+  alu: "potato",
   आलु: "potato",
   आलू: "potato",
   patata: "potato",
@@ -186,6 +186,15 @@ const toks = (s) =>
     .map(xt);
 
 function matchProduct(query, products = []) {
+  const trimmed = String(query || "").trim();
+  if (trimmed && products.length) {
+    const direct = products.find(
+      (p) =>
+        (p.barcode && String(p.barcode).trim().toLowerCase() === trimmed.toLowerCase()) ||
+        (p.aliases && p.aliases.some((a) => String(a).trim().toLowerCase() === trimmed.toLowerCase()))
+    );
+    if (direct) return { product: direct, score: 1.0 };
+  }
   const q = toks(query);
   if (!q.length || !products.length) return { product: null, score: 0 };
   let best = null,

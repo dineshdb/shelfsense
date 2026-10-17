@@ -2,3 +2,4 @@ node_modules/
 .firebase/
 dist/
 .vite-hooks/
+.astro/

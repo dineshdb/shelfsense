@@ -101,7 +101,7 @@ const I = {
 /* ---------- state ---------- */
 let saved = {}; try { saved = JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) {}
 const S = { products: saved.products || [], moves: saved.moves || [], settings: Object.assign({}, DEF, saved.settings || {}) };
-const U = { tab: 'home', scan: { image: null, dets: [], busy: false, status: '', camOn: false, engine: '', mode: 'shelf', rcpt: null },
+const U = { tab: 'home', scan: { image: null, dets: [], busy: false, status: '', camOn: false, engine: '', mode: 'shelf', rcpt: null, barcode: null },
   voice: { transcript: '', busy: false, bill: [], recording: false, rec: null }, inv: { q: '', cat: 'All', sort: 'name' }, ai: { busy: false, text: '' }, setup: { mode: 'gemini', busy: false, msg: '' }, edit: null };
 let stream = null;
 const save = (cloud = true) => {
@@ -111,6 +111,8 @@ const save = (cloud = true) => {
 };
 
 /* ---------- helpers ---------- */
+const hasBarcodeDetector = typeof window !== 'undefined' && 'BarcodeDetector' in window;
+const hasSpeechRec = typeof window !== 'undefined' && ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window);
 const set = () => S.settings;
 const money = n => esc(set().currency) + (Number(n) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fq = (q, unit, dec) => {
@@ -122,6 +124,23 @@ const daysTxt = d => !isFinite(d) ? 'no recent sales' : d < 1 ? '< 1 day left' :
 const ago = ts => { const s = (Date.now() - ts) / 1000; return s < 60 ? 'just now' : s < 3600 ? Math.round(s / 60) + ' min ago' : s < 86400 ? Math.round(s / 3600) + ' h ago' : Math.round(s / 86400) + ' d ago'; };
 const emoji = p => { const n = Core.strip(p.name); for (const [re, e] of NAME_EMOJI) if (re.test(n)) return e; return CAT[p.category] || '📦'; };
 const prod = id => S.products.find(p => p.id === id);
+const findByBarcode = code => {
+  if (!code) return null;
+  const c = String(code).trim().toLowerCase();
+  return S.products.find(p => (p.barcode && String(p.barcode).trim().toLowerCase() === c) || (p.aliases && p.aliases.some(a => String(a).trim().toLowerCase() === c))) || null;
+};
+function beep() {
+  try {
+    const ac = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ac.createOscillator(), g = ac.createGain();
+    osc.type = 'sine'; osc.frequency.setValueAtTime(880, ac.currentTime);
+    g.gain.setValueAtTime(0.18, ac.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 0.12);
+    osc.connect(g); g.connect(ac.destination);
+    osc.start(); osc.stop(ac.currentTime + 0.12);
+  } catch (e) {}
+  try { if (navigator.vibrate) navigator.vibrate([60]); } catch (e) {}
+}
 const color = s => ({ ok: 'var(--ok)', low: 'var(--warn)', out: 'var(--bad)', slow: 'var(--chart-4)' }[s]);
 function toast(msg, type = '', ms = 3200) {
   const el = document.createElement('div'); el.className = 'toast ' + type; el.textContent = msg;
@@ -318,25 +337,60 @@ function chart(s) {
   return g + '</svg>';
 }
 function vScan() {
-  const sc = U.scan, rcpt = sc.mode === 'rcpt', ready = aiReady(), gate = !ready;
-  let o = `<div class="scangrid"><div class="card"><div class="ch"><h2><span class="ico t-ok">${rcpt ? '🧾' : '📸'}</span>${rcpt ? 'Log a delivery' : 'Scan the store'}</h2><span class="sub">${ready ? aiLabel() : 'Needs AI'}</span></div>
-  <div class="chips" style="margin-top:0">${[['shelf', '🧺 Shelf'], ['rcpt', '🧾 Receipt']].map(([v, l]) => `<button class="chip ${sc.mode === v ? 'on' : ''}" data-a="scanmode" data-v="${v}">${l}</button>`).join('')}</div>
+  const sc = U.scan, rcpt = sc.mode === 'rcpt', barcode = sc.mode === 'barcode';
+  const ready = barcode ? true : aiReady(), gate = barcode ? false : !ready;
+  let o = `<div class="scangrid"><div class="card"><div class="ch"><h2><span class="ico t-ok">${barcode ? '🏷️' : rcpt ? '🧾' : '📸'}</span>${barcode ? 'Scan a barcode' : rcpt ? 'Log a delivery' : 'Scan the store'}</h2><span class="sub">${barcode ? (hasBarcodeDetector ? 'Native Scanner' : 'Barcode') : ready ? aiLabel() : 'Needs AI'}</span></div>
+  <div class="chips" style="margin-top:0">${[['shelf', '🧺 Shelf'], ['rcpt', '🧾 Receipt'], ['barcode', '🏷️ Barcode']].map(([v, l]) => `<button class="chip ${sc.mode === v ? 'on' : ''}" data-a="scanmode" data-v="${v}">${l}</button>`).join('')}</div>
   <div class="viewer">
     ${sc.camOn && !sc.image ? `<video id="video" playsinline muted autoplay></video><span class="corner c1"></span><span class="corner c2"></span><span class="corner c3"></span><span class="corner c4"></span><div class="laser"></div>` : ''}
     ${sc.image ? `<img id="shot" src="${sc.image}"><canvas id="shotCv"></canvas>` : ''}
-    ${!sc.camOn && !sc.image ? `<div class="ph"><div class="scanico">${I.scan}</div><b style="font-size:14.5px">${rcpt ? 'Point at a supplier receipt' : 'Point at a shelf'}</b><br>${rcpt ? 'Photograph what just arrived — the lines land as a delivery you confirm.' : 'Use the live camera or a photo.'}</div>` : ''}
+    ${!sc.camOn && !sc.image ? `<div class="ph"><div class="scanico">${barcode ? '🏷️' : I.scan}</div><b style="font-size:14.5px">${barcode ? 'Point camera at any barcode or QR code' : rcpt ? 'Point at a supplier receipt' : 'Point at a shelf'}</b><br>${barcode ? 'Instant deterministic product lookup, sales checkout and restock.' : rcpt ? 'Photograph what just arrived — the lines land as a delivery you confirm.' : 'Use the live camera or a photo.'}</div>` : ''}
     ${sc.busy ? `<div class="busy"><div><div class="spin"></div>${esc(sc.status)}</div></div>` : ''}
   </div>`;
-  o += !sc.camOn ? `<div class="g2 mt"><button class="btn pri" data-a="cam" ${gate ? 'disabled' : ''}>🎥 Live camera</button><button class="btn sec" data-a="pick" data-v="photoIn" ${gate ? 'disabled' : ''}>🖼️ ${rcpt ? 'Receipt photo' : 'Photos'}</button></div>`
-    : `<div class="g3 mt"><button class="btn pri" data-a="capture">◉ Capture</button><button class="btn ghost" data-a="camoff">✕ Close</button></div>`;
+  o += !sc.camOn ? `<div class="g2 mt"><button class="btn pri" data-a="cam" ${gate ? 'disabled' : ''}>🎥 Live camera</button><button class="btn sec" data-a="pick" data-v="photoIn" ${gate ? 'disabled' : ''}>🖼️ ${barcode ? 'Barcode photo' : rcpt ? 'Receipt photo' : 'Photos'}</button></div>`
+    : `<div class="g3 mt">${barcode ? '' : '<button class="btn pri" data-a="capture">◉ Capture</button>'}<button class="btn ghost" data-a="camoff">✕ Close</button></div>`;
+  if (barcode) {
+    o += `<div class="inrow mt"><input class="f" id="manualBarcode" placeholder="Or enter barcode / SKU…"><button class="btn pri" data-a="manualBarcode">Find</button></div>`;
+  }
   if (gate) o += `<div class="muted small mt">Scanning needs an AI backend — configure Gemini or your local server in Settings.</div>`;
-  if (sc.image && !sc.busy) o += `<button class="btn ghost w mt" data-a="rescan">↺ ${rcpt ? 'Read another receipt' : 'Scan again'}</button>`;
+  if (sc.image && !sc.busy) o += `<button class="btn ghost w mt" data-a="rescan">↺ ${barcode ? 'Scan another barcode' : rcpt ? 'Read another receipt' : 'Scan again'}</button>`;
   o += `</div>`;
-  if (!sc.dets.length && !sc.busy) o += `<div class="card"><div class="ch"><h2><span class="ico t-info">${rcpt ? '🧾' : '🔎'}</span>${rcpt ? 'Delivery lines' : 'Found products'}</h2></div>
+  if (barcode) {
+    if (sc.barcode) {
+      const bp = findByBarcode(sc.barcode.code);
+      if (bp) {
+        o += `<div class="card"><div class="ch"><h2><span class="ico t-ok">🏷️</span>Barcode matched</h2><span class="badge b-ok">In inventory</span></div>
+        <div class="muted small" style="margin:-4px 0 10px">Barcode: <code>${esc(sc.barcode.code)}</code></div>
+        <div class="it" style="border:1px solid var(--line);border-radius:var(--radius);padding:12px;margin-bottom:14px">
+          <div class="em" style="font-size:28px">${emoji(bp)}</div>
+          <div class="mid">
+            <div class="tt" style="font-size:16px;font-weight:700">${esc(bp.name)}</div>
+            <div class="ss">${money(bp.price)} / ${bp.unit} · Stock: <b>${fq(bp.stock, bp.unit)}</b></div>
+            <div class="muted small" style="margin-top:2px">${esc(bp.category || 'Other')}${bp.barcode ? ' · SKU ' + esc(bp.barcode) : ''}</div>
+          </div>
+        </div>
+        <div class="g2"><button class="btn pri" data-a="barcodeAction" data-t="sale" data-v="${bp.id}">⚡ Quick Sale (1 ${bp.unit})</button>
+        <button class="btn sec" data-a="barcodeAction" data-t="restock" data-v="${bp.id}">📦 +1 Restock</button></div>
+        <div class="g2 mt"><button class="btn ghost" data-a="edit" data-v="${bp.id}">✏️ Edit product</button>
+        <button class="btn ghost" data-a="barcodeRescan">↺ Scan another</button></div></div>`;
+      } else {
+        o += `<div class="card"><div class="ch"><h2><span class="ico t-warn">🏷️</span>Unmatched Barcode</h2><span class="badge b-new">New</span></div>
+        <div class="muted" style="margin:-4px 0 14px">Barcode <b style="color:var(--primary);font-family:monospace;font-size:15px">${esc(sc.barcode.code)}</b> is not linked to any product yet.</div>
+        <div class="g2"><button class="btn pri" data-a="barcodeNew" data-v="${esc(sc.barcode.code)}">➕ Create new product</button>
+        <button class="btn ghost" data-a="barcodeRescan">↺ Scan another</button></div></div>`;
+      }
+    } else {
+      o += `<div class="card"><div class="ch"><h2><span class="ico t-info">🏷️</span>Barcode checkout & intake</h2></div>
+      <div class="empty"><span class="e">🏷️</span>Point camera at any UPC, EAN, or QR barcode to instantly look up stock, ring up a sale, or log incoming goods.</div>
+      <div class="muted small mt">Supports EAN-13, UPC-A, Code 128, QR codes, and more using your browser's native hardware scanner.</div></div>`;
+    }
+  } else if (!sc.dets.length && !sc.busy) {
+    o += `<div class="card"><div class="ch"><h2><span class="ico t-info">${rcpt ? '🧾' : '🔎'}</span>${rcpt ? 'Delivery lines' : 'Found products'}</h2></div>
     ${rcpt ? `<div class="empty"><span class="e">🧾</span>Photograph the supplier receipt and every line the AI reads lands here — check products, quantities and unit costs, then log the delivery.</div>
     <div class="muted small mt">Costs update each product's cost price; new items start at a sell price of ~1.35× cost. Everything enters the ledger as a delivery.</div>`
     : `<div class="empty"><span class="e">🔍</span>Capture a shelf and everything the AI recognizes lands here — check names, quantities and prices, then save to inventory.</div>
     <div class="muted small mt">Use <b>Live camera</b> for a real shelf, or <b>Photos</b> to upload shots. Detection runs with ${aiLabel()}.</div>`}</div>`;
+  }
   if (sc.dets.length) {
     const sum = sc.dets.filter(d => d.include).reduce((s, d) => s + (+d.count || 0) * (+d.cost || 0), 0);
     const totOk = sc.rcpt && sc.rcpt.total != null && Math.abs(sum - sc.rcpt.total) <= Math.max(1, sc.rcpt.total * 0.02);
@@ -358,7 +412,7 @@ function vScan() {
 }
 function vSell() {
   const v = U.voice, ready = aiReady();
-  let o = `<div class="sellgrid"><div class="card"><div class="ch"><h2><span class="ico t-info">🎙️</span>Voice sales</h2><span class="sub">${esc(set().lang)}${v.recording ? ' · recording' : ''}</span></div><div class="voice">
+  let o = `<div class="sellgrid"><div class="card"><div class="ch"><h2><span class="ico t-info">🎙️</span>Voice sales</h2><span class="sub">${esc(set().lang)}${hasSpeechRec ? ' · Fast Web Speech' : ''}${v.recording ? ' · recording' : ''}</span></div><div class="voice">
     <button class="micbtn ${v.recording ? 'on' : ''}" data-a="listen" ${ready ? '' : 'disabled'} aria-label="${v.recording ? 'Stop recording' : 'Start recording'}">${v.recording ? I.stop : I.mic}</button>
     <div class="wave ${v.recording ? 'on' : ''}">${'<i></i>'.repeat(13)}</div>
     <div class="trans ${v.transcript ? '' : 'ph2'}" id="trans">${v.transcript ? '“' + esc(v.transcript) + '”' : v.recording ? 'Recording… tap again to send' : v.busy ? 'Transcribing…' : 'Tap the mic, speak, tap again — English, हिन्दी, नेपाली, Español'}</div>
@@ -481,7 +535,8 @@ function vSheet() {
   const hist = e.id ? S.moves.filter(m => m.productId === e.id).sort((a, b) => b.ts - a.ts).slice(0, 8) : [];
   return `<div class="sheetbg" data-a="closeSheet"><div class="sheet" data-stop><div class="grab"></div><h3>${e.id ? 'Edit product' : 'New product'}</h3>
     <label class="lb">Name</label><input class="f" id="e_name" value="${esc(e.name)}">
-    <label class="lb">Voice aliases (comma separated)</label><input class="f" id="e_alias" value="${esc((e.aliases || []).join(', '))}" placeholder="coke, soda, refresco">
+    <div class="g2"><div><label class="lb">Barcode / SKU</label><input class="f" id="e_barcode" value="${esc(e.barcode || '')}" placeholder="e.g. 5449000000996"></div>
+    <div><label class="lb">Voice aliases</label><input class="f" id="e_alias" value="${esc((e.aliases || []).join(', '))}" placeholder="coke, soda, refresco"></div></div>
     <div class="g2"><div><label class="lb">Category</label><select class="f" id="e_cat">${Object.keys(CAT).map(c => `<option ${c === e.category ? 'selected' : ''}>${c}</option>`).join('')}</select></div>
     <div><label class="lb">Unit</label><select class="f" id="e_unit">${UNITS.map(u => `<option ${u === e.unit ? 'selected' : ''}>${u}</option>`).join('')}</select></div>
     <div><label class="lb">In stock</label><input class="f" id="e_stock" type="number" step="any" value="${e.stock}"></div>
@@ -527,14 +582,61 @@ function render() {
 const go = t => { if (t !== 'scan') stopCam(); if (t !== 'sell' && U.voice.recording) stopRec(); U.tab = t; render(); window.scrollTo({ top: 0, behavior: 'smooth' }); };
 
 /* =========================================================== SCAN */
+let barcodeTimer = null;
+function startBarcodeLoop() {
+  stopBarcodeLoop();
+  if (!hasBarcodeDetector) return;
+  let detector;
+  try {
+    detector = new window.BarcodeDetector({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39', 'qr_code', 'itf'] });
+  } catch (e) {
+    try { detector = new window.BarcodeDetector(); } catch (e2) { return; }
+  }
+  const check = async () => {
+    if (!U.scan.camOn || U.scan.mode !== 'barcode' || U.scan.barcode) return;
+    const v = $('#video');
+    if (v && v.readyState >= 2) {
+      try {
+        const codes = await detector.detect(v);
+        if (codes && codes.length > 0 && codes[0].rawValue) {
+          onBarcodeScanned(codes[0].rawValue);
+          return;
+        }
+      } catch (e) {}
+    }
+    if (U.scan.camOn && U.scan.mode === 'barcode' && !U.scan.barcode) {
+      barcodeTimer = setTimeout(check, 250);
+    }
+  };
+  barcodeTimer = setTimeout(check, 350);
+}
+function stopBarcodeLoop() {
+  if (barcodeTimer) { clearTimeout(barcodeTimer); barcodeTimer = null; }
+}
+function onBarcodeScanned(code) {
+  stopBarcodeLoop();
+  stopCam();
+  beep();
+  U.scan.barcode = { code: String(code).trim() };
+  render();
+  const bp = findByBarcode(code);
+  if (bp) toast(`🏷️ Matched: ${bp.name}`, 'ok');
+  else toast(`🏷️ Read barcode: ${code} (Not in inventory)`, 'warn');
+}
+
 async function startCam() {
   if (!navigator.mediaDevices?.getUserMedia) { toast('Live camera needs HTTPS — opening photo capture instead', 'warn'); $('#photoIn').click(); return; }
   try {
     stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
     U.scan.image = null; U.scan.dets = []; U.scan.camOn = true; render();
+    if (U.scan.mode === 'barcode') startBarcodeLoop();
   } catch (e) { toast('Camera unavailable (' + e.message + ') — opening photos', 'warn', 4500); $('#photoIn').click(); }
 }
-function stopCam() { if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; } U.scan.camOn = false; }
+function stopCam() {
+  stopBarcodeLoop();
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  U.scan.camOn = false;
+}
 function capture() {
   const v = $('#video'); if (!v || !v.videoWidth) return toast('Camera not ready yet', 'warn');
   const k = Math.min(1, 1280 / Math.max(v.videoWidth, v.videoHeight)), c = document.createElement('canvas'); c.width = v.videoWidth * k; c.height = v.videoHeight * k;
@@ -592,7 +694,7 @@ function commit(mode) {
       if (rcpt && d.cost) { p.cost = +d.cost; if (!p.price) p.price = +(d.cost * 1.35).toFixed(2); }
       if (!rcpt && d.price) p.price = +d.price;
       S.moves.push({ id: uid(), productId: p.id, type: mode === 'set' ? 'adjust' : 'restock', qty: +(p.stock - b).toFixed(3), delta: +(p.stock - b).toFixed(3), ts: Date.now(), source: src }); u++; }
-    else { p = { id: uid(), name: d.name.trim(), aliases: [], category: d.category, unit: d.unit, stock: q,
+    else { p = { id: uid(), name: d.name.trim(), barcode: '', aliases: [], category: d.category, unit: d.unit, stock: q,
         price: rcpt ? (d.cost ? +(d.cost * 1.35).toFixed(2) : 0) : +d.price || 0,
         cost: rcpt ? +d.cost || 0 : (d.price ? +(d.price * .75).toFixed(2) : 0),
         minStock: null, createdAt: Date.now() };
@@ -605,12 +707,64 @@ function commit(mode) {
 /* =========================================================== VOICE */
 async function listen() {
   if (U.voice.recording) return stopRec();
-  if (!aiReady()) return toast('Voice needs an AI backend — Settings → AI backend', 'warn', 5000);
-  if (!navigator.mediaDevices?.getUserMedia) return toast('Microphone needs HTTPS — type the command instead', 'warn', 5000);
+  if (!aiReady() && !hasSpeechRec) return toast('Voice needs an AI backend — Settings → AI backend', 'warn', 5000);
+  if (!navigator.mediaDevices?.getUserMedia && !hasSpeechRec) return toast('Microphone needs HTTPS — type the command instead', 'warn', 5000);
   startRec();
 }
 async function startRec() {
   if (!S.products.length) toast('Tip: add products first (Scan or Load demo)', 'warn');
+  const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (SpeechRec) {
+    try {
+      const rec = new SpeechRec();
+      rec.continuous = false;
+      rec.interimResults = true;
+      rec.lang = set().lang || 'en-US';
+      U.voice.transcript = '';
+      U.voice.recording = true;
+      render();
+      rec.onresult = e => {
+        let interim = '', final = '';
+        for (let i = e.resultIndex; i < e.results.length; ++i) {
+          if (e.results[i].isFinal) final += e.results[i][0].transcript;
+          else interim += e.results[i][0].transcript;
+        }
+        const text = (final || interim).trim();
+        if (text) {
+          U.voice.transcript = text;
+          const el = $('#trans');
+          if (el) { el.textContent = '“' + text + '”'; el.classList.remove('ph2'); }
+        }
+      };
+      rec.onend = () => {
+        U.voice.recording = false;
+        U.voice.rec = null;
+        render();
+        if (U.voice.transcript.trim()) {
+          command(U.voice.transcript.trim(), 'voice');
+        }
+      };
+      rec.onerror = e => {
+        console.warn('Native speech recognition fallback:', e);
+        U.voice.recording = false;
+        U.voice.rec = null;
+        if (e.error === 'not-allowed') {
+          toast('Microphone access denied', 'err');
+          render();
+        } else if (!U.voice.transcript) {
+          startRecAudioContext();
+        }
+      };
+      U.voice.rec = { nativeRec: rec };
+      rec.start();
+      return;
+    } catch (e) {
+      console.warn('SpeechRec failed, falling back:', e);
+    }
+  }
+  startRecAudioContext();
+}
+async function startRecAudioContext() {
   let stream;
   try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
   catch (e) { return toast('Mic unavailable: ' + e.message, 'err', 5000); }
@@ -626,6 +780,10 @@ async function startRec() {
 }
 async function stopRec() {
   const r = U.voice.rec; if (!r) return;
+  if (r.nativeRec) {
+    try { r.nativeRec.stop(); } catch (e) {}
+    return;
+  }
   clearTimeout(U.voice.recCap);
   U.voice.recording = false; U.voice.busy = true; render();
   try { r.proc.disconnect(); r.src.disconnect(); } catch (e) {}
@@ -742,16 +900,16 @@ function rng(s) { return () => { s |= 0; s = s + 0x6D2B79F5 | 0; let t = Math.im
 function demo() {
   if (S.products.length && !confirm('Replace current data with the demo store?')) return;
   const R = rng(42), now = Date.now(), P = [
-    ['Sugar', 'Pantry', 'kg', 9, 1.10, .80, 2.4, ['azucar', 'white sugar']], ['Rice', 'Grains', 'kg', 32, 1.40, 1.00, 2.8, ['arroz']],
-    ['Whole Milk 1L', 'Dairy', 'unit', 7, 1.25, .90, 4.6, ['milk', 'leche']], ['Bread loaf', 'Bakery', 'unit', 6, 2.00, 1.30, 5.2, ['bread', 'pan']],
-    ['Eggs 12-pack', 'Dairy', 'pack', 11, 3.20, 2.40, 1.6, ['eggs', 'huevos']], ['Cooking Oil 1L', 'Pantry', 'unit', 14, 3.50, 2.60, .9, ['oil', 'aceite']],
-    ['Coca-Cola 600ml', 'Beverages', 'unit', 40, 1.00, .65, 6.5, ['coke', 'coca cola', 'soda', 'coca']], ['Bananas', 'Fruits', 'kg', 3, .70, .40, 3.1, ['banana', 'banano']],
-    ['Tomatoes', 'Vegetables', 'kg', 7, 1.60, 1.10, 1.5, ['tomato', 'tomate']], ['Pasta 500g', 'Pantry', 'pack', 26, .90, .60, 1.2, ['pasta', 'spaghetti']],
-    ['Ground Coffee 250g', 'Pantry', 'pack', 10, 4.50, 3.20, .45, ['coffee', 'cafe']], ['Black Beans', 'Grains', 'kg', 16, 1.80, 1.30, 1.1, ['beans', 'frijoles']],
-    ['Bar Soap', 'Personal Care', 'unit', 34, .80, .50, .15, ['soap', 'jabon']], ['Salt 1kg', 'Pantry', 'unit', 22, .50, .30, .06, ['salt', 'sal']]];
+    ['Sugar', 'Pantry', 'kg', 9, 1.10, .80, 2.4, ['azucar', 'white sugar'], '8901234567890'], ['Rice', 'Grains', 'kg', 32, 1.40, 1.00, 2.8, ['arroz'], '8901234567891'],
+    ['Whole Milk 1L', 'Dairy', 'unit', 7, 1.25, .90, 4.6, ['milk', 'leche'], '012345678905'], ['Bread loaf', 'Bakery', 'unit', 6, 2.00, 1.30, 5.2, ['bread', 'pan'], '073410013589'],
+    ['Eggs 12-pack', 'Dairy', 'pack', 11, 3.20, 2.40, 1.6, ['eggs', 'huevos'], '041383091234'], ['Cooking Oil 1L', 'Pantry', 'unit', 14, 3.50, 2.60, .9, ['oil', 'aceite'], '8901234567892'],
+    ['Coca-Cola 600ml', 'Beverages', 'unit', 40, 1.00, .65, 6.5, ['coke', 'coca cola', 'soda', 'coca'], '5449000000996'], ['Bananas', 'Fruits', 'kg', 3, .70, .40, 3.1, ['banana', 'banano'], '4011'],
+    ['Tomatoes', 'Vegetables', 'kg', 7, 1.60, 1.10, 1.5, ['tomato', 'tomate'], '4087'], ['Pasta 500g', 'Pantry', 'pack', 26, .90, .60, 1.2, ['pasta', 'spaghetti'], '8001234567893'],
+    ['Ground Coffee 250g', 'Pantry', 'pack', 10, 4.50, 3.20, .45, ['coffee', 'cafe'], '8001234567894'], ['Black Beans', 'Grains', 'kg', 16, 1.80, 1.30, 1.1, ['beans', 'frijoles'], '012345678906'],
+    ['Bar Soap', 'Personal Care', 'unit', 34, .80, .50, .15, ['soap', 'jabon'], '012345678907'], ['Salt 1kg', 'Pantry', 'unit', 22, .50, .30, .06, ['salt', 'sal'], '8901234567895']];
   S.products = []; S.moves = [];
-  P.forEach(([name, category, unit, stock, price, cost, rate, aliases], k) => {
-    const id = 'p' + k; S.products.push({ id, name, category, unit, stock, price, cost, aliases, minStock: null, createdAt: now - 22 * DAY });
+  P.forEach(([name, category, unit, stock, price, cost, rate, aliases, barcode], k) => {
+    const id = 'p' + k; S.products.push({ id, name, category, unit, stock, price, cost, aliases, barcode: barcode || '', minStock: null, createdAt: now - 22 * DAY });
     for (let d = 21; d >= 0; d--) {
       const day = new Date(now - d * DAY), wk = [0, 6].includes(day.getDay()) ? 1.35 : 1, ramp = name.startsWith('Coca') ? .7 + (21 - d) / 35 : 1;
       let q = rate * wk * ramp * (.5 + R()); if (d === 0) q *= Math.min(1, (new Date().getHours() + 1) / 20);
@@ -764,7 +922,7 @@ function demo() {
     }
   });
   if (S.settings.storeName === DEF.storeName) S.settings.storeName = 'Abarrotes La Esquina';
-  U.ai.text = ''; save(); go('home'); toast('✨ Demo store loaded — 14 products, 3 weeks of sales', 'ok');
+  U.ai.text = ''; save(); go('home'); toast('✨ Demo store loaded — 14 products with barcodes, 3 weeks of sales', 'ok');
 }
 function quick(id, type) {
   const p = prod(id), step = p.unit === 'g' || p.unit === 'ml' ? 100 : 1;
@@ -774,8 +932,11 @@ function quick(id, type) {
   save(); $('#stocklist').innerHTML = stockList();
 }
 function saveP() {
-  const e = U.edit, g = id => $('#' + id).value, name = g('e_name').trim(); if (!name) return toast('Name is required', 'warn');
-  const d = { name, aliases: g('e_alias').split(',').map(s => s.trim()).filter(Boolean), category: g('e_cat'), unit: g('e_unit'), stock: +g('e_stock') || 0, minStock: g('e_min') === '' ? null : +g('e_min'), price: +g('e_price') || 0, cost: +g('e_cost') || 0 };
+  const e = U.edit, g = id => $('#' + id)?.value || '', name = g('e_name').trim(); if (!name) return toast('Name is required', 'warn');
+  const barcode = g('e_barcode').trim();
+  const aliases = g('e_alias').split(',').map(s => s.trim()).filter(Boolean);
+  if (barcode && !aliases.includes(barcode)) aliases.push(barcode);
+  const d = { name, barcode, aliases, category: g('e_cat'), unit: g('e_unit'), stock: +g('e_stock') || 0, minStock: g('e_min') === '' ? null : +g('e_min'), price: +g('e_price') || 0, cost: +g('e_cost') || 0 };
   if (e.id) { const p = prod(e.id), b = p.stock; Object.assign(p, d); if (b !== p.stock) S.moves.push({ id: uid(), productId: p.id, type: 'adjust', qty: +(p.stock - b).toFixed(3), delta: +(p.stock - b).toFixed(3), ts: Date.now(), source: 'edit' }); }
   else S.products.push({ id: uid(), createdAt: Date.now(), ...d });
   U.edit = null; save(); render(); toast('Saved', 'ok');
@@ -785,8 +946,31 @@ function saveP() {
 const ACT = {
   tab: el => go(el.dataset.v), demo, share, advisor,
   cam: startCam, camoff: () => { stopCam(); render(); }, capture,
-  scanmode: el => { if (U.scan.mode === el.dataset.v) return; stopCam(); U.scan.mode = el.dataset.v; U.scan.image = null; U.scan.dets = []; U.scan.rcpt = null; render(); },
-  rescan: () => { U.scan.image = null; U.scan.dets = []; U.scan.rcpt = null; render(); },
+  scanmode: el => { if (U.scan.mode === el.dataset.v) return; stopCam(); U.scan.mode = el.dataset.v; U.scan.image = null; U.scan.dets = []; U.scan.rcpt = null; U.scan.barcode = null; render(); },
+  rescan: () => { U.scan.image = null; U.scan.dets = []; U.scan.rcpt = null; U.scan.barcode = null; render(); },
+  barcodeAction: el => {
+    const p = prod(el.dataset.v), t = el.dataset.t;
+    if (p) {
+      quick(p.id, t);
+      toast(`${t === 'sale' ? '⚡ Sale' : '📦 Restock'}: 1 ${p.unit} of ${p.name}`, 'ok');
+      render();
+    }
+  },
+  barcodeRescan: () => {
+    U.scan.barcode = null;
+    render();
+    startCam();
+  },
+  barcodeNew: el => {
+    const code = el.dataset.v;
+    U.edit = { id: null, name: '', barcode: code, aliases: [code], category: 'Pantry', unit: 'unit', stock: 0, minStock: null, price: 0, cost: 0 };
+    render();
+  },
+  manualBarcode: () => {
+    const val = ($('#manualBarcode')?.value || '').trim();
+    if (!val) return toast('Enter a barcode or SKU number', 'warn');
+    onBarcodeScanned(val);
+  },
   pick: el => $('#' + el.dataset.v).click(), commit: el => commit(el.dataset.v),
   listen, typed: () => { const t = $('#typed').value.trim(); if (t) command(t, 'typed'); },
   billApply: () => billApply(false), billPrint: () => billApply(true),
@@ -857,7 +1041,7 @@ const ACT = {
     $('#stocklist').innerHTML = stockList();
     toast(`✅ ${p.name}: ${delta >= 0 ? '+' : '−'}${fq(Math.abs(delta), p.unit)} — now ${fq(ns, p.unit)}`, 'ok');
   },
-  edit: el => { const p = prod(el.dataset.v); U.edit = p ? { ...p } : { id: null, name: '', aliases: [], category: 'Pantry', unit: 'unit', stock: 0, minStock: null, price: 0, cost: 0 }; render(); },
+  edit: el => { const p = prod(el.dataset.v); U.edit = p ? { ...p } : { id: null, name: '', barcode: '', aliases: [], category: 'Pantry', unit: 'unit', stock: 0, minStock: null, price: 0, cost: 0 }; render(); },
   closeSheet: (el, ev) => { if (ev.target.closest('[data-stop]') && el.classList.contains('sheetbg')) return; U.edit = null; render(); },
   saveP, delP: () => { if (!confirm('Delete this product and its history?')) return; const id = U.edit.id; S.products = S.products.filter(p => p.id !== id); S.moves = S.moves.filter(m => m.productId !== id); U.edit = null; save(); render(); },
   toggle: el => { S.settings[el.dataset.v] = !S.settings[el.dataset.v]; save(); el.classList.toggle('on'); },
@@ -884,13 +1068,46 @@ document.addEventListener('change', ev => {
   if (t.dataset.det !== undefined) { const d = U.scan.dets[+t.dataset.det];
     if (t.dataset.k === 'name') { const m = Core.matchProduct(d.name, S.products); d.matchId = m.product?.id || null; if (m.product && !d.price && U.scan.mode !== 'rcpt') d.price = m.product.price; render(); }
     else if (t.dataset.k === 'include') render(); }
-  if (t.id === 'photoIn') { const fs = [...t.files].slice(0, 6); t.value = ''; if (fs.length) Promise.all(fs.map(f => fileToURL(f).then(d => resize(d)))).then(analyze).catch(e => toast(e.message, 'err')); }
+  if (t.id === 'photoIn') {
+    const fs = [...t.files].slice(0, 6); t.value = '';
+    if (fs.length) {
+      if (U.scan.mode === 'barcode') {
+        fileToURL(fs[0]).then(d => resize(d)).then(url => {
+          if (hasBarcodeDetector) {
+            const im = new Image();
+            im.onload = async () => {
+              try {
+                const det = new window.BarcodeDetector();
+                const codes = await det.detect(im);
+                if (codes?.length && codes[0].rawValue) {
+                  onBarcodeScanned(codes[0].rawValue);
+                  return;
+                }
+              } catch (e) {}
+              toast('No barcode recognized in photo — try another', 'warn');
+            };
+            im.src = url;
+          } else {
+            toast('Live camera or typing barcode recommended on this browser', 'warn');
+          }
+        }).catch(e => toast(e.message, 'err'));
+        return;
+      }
+      Promise.all(fs.map(f => fileToURL(f).then(d => resize(d)))).then(analyze).catch(e => toast(e.message, 'err'));
+    }
+  }
   if (t.id === 'importIn') { const f = t.files[0]; t.value = ''; if (!f) return; f.text().then(x => { const d = JSON.parse(x);
     if (!Array.isArray(d.products) || !Array.isArray(d.moves)) throw new Error('not a ShelfSense export');
     S.products = d.products; S.moves = d.moves; if (d.settings) Object.assign(S.settings, { ...d.settings, apiKey: S.settings.apiKey }); save(); render(); toast('Imported', 'ok');
   }).catch(() => toast('Invalid file — expected a ShelfSense export', 'err')); }
 });
-document.addEventListener('keydown', ev => { if (ev.key === 'Enter' && ev.target.id === 'typed') ACT.typed(); if (ev.key === 'Escape' && U.edit) { U.edit = null; render(); } });
+document.addEventListener('keydown', ev => {
+  if (ev.key === 'Enter') {
+    if (ev.target.id === 'typed') ACT.typed();
+    if (ev.target.id === 'manualBarcode') ACT.manualBarcode();
+  }
+  if (ev.key === 'Escape' && U.edit) { U.edit = null; render(); }
+});
 
 /* ---------- firebase cloud sync (AI Builder Cup: deployed on Firebase) ----
    Anonymous auth + one Firestore doc per device-user. Newest state wins on
