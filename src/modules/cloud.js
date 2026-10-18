@@ -3,16 +3,16 @@
 // Background sync: automatically mirrors to Google Cloud Firestore ONLY when logged in.
 // AES-GCM-256 Vault: Gemini API key is client-side encrypted before pushing to cloud.
 
-import { $ } from './utils.js';
-import { encryptData, decryptData } from './crypto.js';
+import { $ } from "./utils.js";
+import { encryptData, decryptData } from "./crypto.js";
 
 export const cloudState = {
   loggedIn: false,
   user: null, // { uid, email, displayName, photoURL }
-  syncStatus: 'local_only', // 'synced' | 'syncing' | 'offline' | 'local_only'
+  syncStatus: "local_only", // 'synced' | 'syncing' | 'offline' | 'local_only'
   lastSyncedAt: null,
   isSyncing: false,
-  error: null
+  error: null,
 };
 
 let _app = null;
@@ -24,11 +24,11 @@ let _applying = false;
 let _ctx = null; // { S, set, DEF, save, render, toast }
 
 const setPill = (on, label) => {
-  const pillEl = $('#cloudPill');
+  const pillEl = $("#cloudPill");
   if (!pillEl) return;
-  pillEl.style.display = '';
-  pillEl.className = 'pill ' + (on ? '' : 'off');
-  pillEl.innerHTML = '<i></i>' + label;
+  pillEl.style.display = "";
+  pillEl.className = "pill " + (on ? "" : "off");
+  pillEl.innerHTML = "<i></i>" + label;
 };
 
 export function getCloudState() {
@@ -44,8 +44,8 @@ export function initCloudSync(ctx) {
   const cfg = window.FIREBASE_CONFIG || {};
 
   if (!FB || !cfg.apiKey) {
-    cloudState.syncStatus = 'local_only';
-    setPill(false, 'Local-only');
+    cloudState.syncStatus = "local_only";
+    setPill(false, "Local-only");
     return;
   }
 
@@ -54,9 +54,9 @@ export function initCloudSync(ctx) {
     _auth = FB.getAuth(_app);
     _db = FB.getFirestore(_app);
   } catch (e) {
-    console.warn('Firebase init error:', e);
-    cloudState.syncStatus = 'local_only';
-    setPill(false, 'Local-only');
+    console.warn("Firebase init error:", e);
+    cloudState.syncStatus = "local_only";
+    setPill(false, "Local-only");
     return;
   }
 
@@ -66,9 +66,9 @@ export function initCloudSync(ctx) {
       // User is in Local-First Guest Mode
       cloudState.loggedIn = false;
       cloudState.user = null;
-      cloudState.syncStatus = 'local_only';
+      cloudState.syncStatus = "local_only";
       _ref = null;
-      setPill(false, 'Local-only');
+      setPill(false, "Local-only");
       render();
       return;
     }
@@ -77,15 +77,15 @@ export function initCloudSync(ctx) {
     cloudState.loggedIn = true;
     cloudState.user = {
       uid: u.uid,
-      email: u.email || '',
-      displayName: u.displayName || u.email?.split('@')[0] || 'Store Owner',
-      photoURL: u.photoURL || ''
+      email: u.email || "",
+      displayName: u.displayName || u.email?.split("@")[0] || "Store Owner",
+      photoURL: u.photoURL || "",
     };
-    cloudState.syncStatus = 'syncing';
-    setPill(true, 'Syncing…');
+    cloudState.syncStatus = "syncing";
+    setPill(true, "Syncing…");
     render();
 
-    _ref = FB.doc(_db, 'users', u.uid);
+    _ref = FB.doc(_db, "users", u.uid);
 
     try {
       const snap = await FB.getDoc(_ref);
@@ -103,10 +103,16 @@ export function initCloudSync(ctx) {
             if (dec) restoredApiKey = dec;
           }
 
-          S.settings = Object.assign({}, DEF, d.settings || {}, { apiKey: restoredApiKey });
+          // Credentials never live in the cloud (see push()); keep this device's
+          // Gemini + OpenRouter keys when cloud data wins, so the owner doesn't
+          // have to retype them on every reload.
+          S.settings = Object.assign({}, DEF, d.settings || {}, {
+            apiKey: restoredApiKey,
+            aiApiKey: set().aiApiKey,
+          });
           save(false);
           render();
-          toast(`☁️ Synced with Google Account (${u.email})`, 'ok');
+          toast(`☁️ Synced with Google Account (${u.email})`, "ok");
         } else {
           // Local is newer: push local state to Google Cloud
           push(true);
@@ -116,9 +122,9 @@ export function initCloudSync(ctx) {
         push(true);
       }
 
-      cloudState.syncStatus = 'synced';
+      cloudState.syncStatus = "synced";
       cloudState.lastSyncedAt = Date.now();
-      setPill(true, 'Cloud Synced');
+      setPill(true, "Cloud Synced");
       render();
 
       // Realtime listener for cross-device sync
@@ -137,19 +143,22 @@ export function initCloudSync(ctx) {
             if (dec) restoredApiKey = dec;
           }
 
-          S.settings = Object.assign({}, DEF, d2.settings || {}, { apiKey: restoredApiKey });
+          S.settings = Object.assign({}, DEF, d2.settings || {}, {
+            apiKey: restoredApiKey,
+            aiApiKey: set().aiApiKey,
+          });
           save(false);
           render();
           _applying = false;
           cloudState.lastSyncedAt = Date.now();
-          cloudState.syncStatus = 'synced';
-          setPill(true, 'Cloud Synced');
+          cloudState.syncStatus = "synced";
+          setPill(true, "Cloud Synced");
         }
       });
     } catch (err) {
-      console.warn('Cloud sync error on auth:', err);
-      cloudState.syncStatus = 'offline';
-      setPill(false, 'Cloud Offline');
+      console.warn("Cloud sync error on auth:", err);
+      cloudState.syncStatus = "offline";
+      setPill(false, "Cloud Offline");
       render();
     }
   });
@@ -166,7 +175,7 @@ export async function push(immediate = false) {
   const doSync = async () => {
     try {
       cloudState.isSyncing = true;
-      cloudState.syncStatus = 'syncing';
+      cloudState.syncStatus = "syncing";
 
       // 1. Encrypt Gemini API key using user's Google UID before sending to cloud
       let encryptedApiKey = null;
@@ -177,7 +186,8 @@ export async function push(immediate = false) {
 
       // 2. Prepare safe payload (never stores plaintext apiKey in Firestore)
       const safeSettings = { ..._ctx.S.settings };
-      delete safeSettings.apiKey; // Must not exist in map for Firestore rule: !d.settings.keys().hasAny(['apiKey'])
+      delete safeSettings.apiKey; // Must not exist in map for Firestore rule: !d.settings.keys().hasAny(['apiKey', 'aiApiKey'])
+      delete safeSettings.aiApiKey;
       const dataPayload = {
         savedAt: _ctx.S.savedAt || Date.now(),
         products: _ctx.S.products || [],
@@ -186,7 +196,7 @@ export async function push(immediate = false) {
         settings: safeSettings,
         encryptedApiKey,
         userEmail: cloudState.user?.email || null,
-        updatedAt: Date.now()
+        updatedAt: Date.now(),
       };
 
       await FB.runTransaction(_db, async (tx) => {
@@ -196,14 +206,14 @@ export async function push(immediate = false) {
       });
 
       cloudState.isSyncing = false;
-      cloudState.syncStatus = 'synced';
+      cloudState.syncStatus = "synced";
       cloudState.lastSyncedAt = Date.now();
-      setPill(true, 'Cloud Synced');
+      setPill(true, "Cloud Synced");
     } catch (err) {
-      console.warn('Background sync error:', err);
+      console.warn("Background sync error:", err);
       cloudState.isSyncing = false;
-      cloudState.syncStatus = 'offline';
-      setPill(false, 'Offline (Saved Locally)');
+      cloudState.syncStatus = "offline";
+      setPill(false, "Offline (Saved Locally)");
     }
   };
 
@@ -221,21 +231,21 @@ export async function push(immediate = false) {
 export async function loginWithGoogle() {
   const FB = window.__firebase;
   if (!FB || !_auth) {
-    _ctx?.toast('Firebase not configured on this device', 'warn');
+    _ctx?.toast("Firebase not configured on this device", "warn");
     return;
   }
   try {
     const provider = new FB.GoogleAuthProvider();
-    provider.setCustomParameters({ prompt: 'select_account' });
+    provider.setCustomParameters({ prompt: "select_account" });
     const res = await FB.signInWithPopup(_auth, provider);
     const u = res.user;
-    _ctx?.toast(`🎉 Welcome, ${u.displayName || u.email}! Google Cloud Sync active.`, 'ok', 4000);
+    _ctx?.toast(`🎉 Welcome, ${u.displayName || u.email}! Google Cloud Sync active.`, "ok", 4000);
   } catch (err) {
-    console.error('Google Sign-In failed:', err);
-    if (err.code === 'auth/popup-closed-by-user') {
-      _ctx?.toast('Sign-in cancelled', 'warn', 2000);
+    console.error("Google Sign-In failed:", err);
+    if (err.code === "auth/popup-closed-by-user") {
+      _ctx?.toast("Sign-in cancelled", "warn", 2000);
     } else {
-      _ctx?.toast('Google Sign-In error: ' + err.message, 'err', 5000);
+      _ctx?.toast("Google Sign-In error: " + err.message, "err", 5000);
     }
   }
 }
@@ -250,12 +260,12 @@ export async function logoutCloud() {
     await FB.signOut(_auth);
     cloudState.loggedIn = false;
     cloudState.user = null;
-    cloudState.syncStatus = 'local_only';
-    setPill(false, 'Local-only');
+    cloudState.syncStatus = "local_only";
+    setPill(false, "Local-only");
     _ctx?.render();
-    _ctx?.toast('🚪 Signed out. Running in local-only mode.', 'ok', 3000);
+    _ctx?.toast("🚪 Signed out. Running in local-only mode.", "ok", 3000);
   } catch (err) {
-    _ctx?.toast('Sign-out error: ' + err.message, 'err', 3000);
+    _ctx?.toast("Sign-out error: " + err.message, "err", 3000);
   }
 }
 
@@ -267,13 +277,17 @@ export async function manualSyncNow() {
   _ctx.save(false);
 
   if (!cloudState.loggedIn) {
-    _ctx.toast('💾 Local store data saved. Sign in with Google to enable cloud backup.', 'warn', 4500);
+    _ctx.toast(
+      "💾 Local store data saved. Sign in with Google to enable cloud backup.",
+      "warn",
+      4500,
+    );
     _ctx.render();
     return;
   }
 
-  _ctx.toast('⚡ Syncing with Google Cloud…', 'ok', 2000);
+  _ctx.toast("⚡ Syncing with Google Cloud…", "ok", 2000);
   await push(true);
   _ctx.render();
-  _ctx.toast('✅ Google Cloud sync complete!', 'ok', 3000);
+  _ctx.toast("✅ Google Cloud sync complete!", "ok", 3000);
 }

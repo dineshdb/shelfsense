@@ -92,7 +92,9 @@ test("matchProduct: cross-language tokens (romanized and Devanagari) land on the
   assert.equal(Core.matchProduct("golbheda", PRODUCTS).product.id, "p5");
 });
 test("matchProduct: barcode matches deterministically with score 1.0", () => {
-  const prods = [{ id: "pb1", name: "Heinz Ketchup", barcode: "013000006408", aliases: [], unit: "unit" }];
+  const prods = [
+    { id: "pb1", name: "Heinz Ketchup", barcode: "013000006408", aliases: [], unit: "unit" },
+  ];
   const res = Core.matchProduct("013000006408", prods);
   assert.equal(res.product?.id, "pb1");
   assert.equal(res.score, 1.0);
@@ -146,9 +148,7 @@ test("normalizeModelParse: extracts customer name and khata/credit paymentMode",
   const r = {
     customer: "Ramesh Kumar",
     paymentMode: "khata",
-    items: [
-      { intent: "sale", product: "Sugar", heard: "cheeni", qty: 2, unit: "kg" },
-    ],
+    items: [{ intent: "sale", product: "Sugar", heard: "cheeni", qty: 2, unit: "kg" }],
   };
   const P = Core.normalizeModelParse(r, "Ramesh ko 2 kg cheeni udhaar likho", PRODUCTS);
   assert.equal(P.customer, "Ramesh Kumar");
@@ -167,7 +167,7 @@ test("normalizeModelParse: garbage from the model degrades, never throws", () =>
   assert.equal(P.items[0].qty, 1); // negative/NaN → 1
   assert.equal(P.items[0].unit, null); // invalid unit → null
   assert.equal(P.items[0].productId, "p2");
-  assert.equal(P.items[2].qty, 1);
+  assert.equal(P.items.length, 1); // the no-name item is grounded out entirely
 });
 test("normalizeModelParse: missing/broken answers produce zero items", () => {
   assert.deepEqual(Core.normalizeModelParse(null, "x", PRODUCTS).items, []);
@@ -268,18 +268,49 @@ test("localCommandParse: handles Hindi word numbers ('do doodh')", () => {
   assert.equal(res.items[0].productId, "p2"); // "doodh" -> "milk" -> p2
 });
 
+/* ---------- grounding: unrecognized items never reach the bill ---------- */
+test("localCommandParse: drops unknown products into unmatched ('2 sugar and 3 xyzzy')", () => {
+  const res = Core.localCommandParse("2 sugar and 3 xyzzy blorf", PRODUCTS);
+  assert.equal(res.items.length, 1); // only sugar survives
+  assert.equal(res.items[0].productId, "p1");
+  assert.equal(res.unmatched.length, 1);
+  assert.match(res.unmatched[0], /xyzzy blorf/);
+});
+
+test("localCommandParse: pure gibberish yields zero items and reports it", () => {
+  const res = Core.localCommandParse("flurb the wibbly", PRODUCTS);
+  assert.equal(res.items.length, 0);
+  assert.equal(res.unmatched.length, 1);
+});
+
+test("normalizeModelParse: hallucinated products are grounded out and listed", () => {
+  const r = {
+    items: [
+      { product: "Sugar", heard: "cheeni", qty: 2, unit: "kg" },
+      { product: "Quantum Flux Capsules", heard: "kwantum flaks", qty: 5 },
+      { product: "Milk", qty: 1 },
+    ],
+  };
+  const P = Core.normalizeModelParse(r, "2 kg cheeni, 5 kwantum flaks and 1 milk", PRODUCTS);
+  assert.equal(P.items.length, 2);
+  assert.equal(P.items[0].productId, "p1");
+  assert.equal(P.items[1].productId, "p2");
+  assert.equal(P.unmatched.length, 1);
+  assert.match(P.unmatched[0], /kwantum flaks|Quantum Flux/);
+});
+
 test("aggregateScanDetections: merges multi-photo detections, sums counts and tracks totalUnits", () => {
   const sampleDets = [
     { name: "Whole Milk 1L", count: 4, unit: "unit", confidence: 0.9 },
     { name: "Bread loaf", count: 2, unit: "unit", confidence: 0.85 },
     { name: "Whole Milk 1L", count: 3, unit: "unit", confidence: 0.95 },
-    { name: "Sugar", count: 5, unit: "kg", confidence: 0.8 }
+    { name: "Sugar", count: 5, unit: "kg", confidence: 0.8 },
   ];
   const res = Core.aggregateScanDetections(sampleDets, PRODUCTS);
   assert.equal(res.totalProducts, 3);
   assert.equal(res.totalUnits, 14); // 4 + 2 + 3 + 5 = 14
-  
-  const milk = res.items.find(x => x.name.toLowerCase() === "whole milk 1l");
+
+  const milk = res.items.find((x) => x.name.toLowerCase() === "whole milk 1l");
   assert.ok(milk);
   assert.equal(milk.count, 7); // 4 + 3
   assert.equal(milk.photosCount, 2);
@@ -303,12 +334,12 @@ test("aggregateScanDetections: correctly aggregates decimal quantities across 3 
     { name: "Sugar", count: 1.5, unit: "kg" },
     { name: "Sugar", count: 0.75, unit: "kg" },
     { name: "Sugar", count: 1.25, unit: "kg" },
-    { name: "Salt", count: 1, unit: "kg" }
+    { name: "Salt", count: 1, unit: "kg" },
   ];
   const res = Core.aggregateScanDetections(decimalDets, PRODUCTS);
   assert.equal(res.totalProducts, 2);
   assert.equal(res.totalUnits, 4.5); // 1.5 + 0.75 + 1.25 + 1 = 4.5
-  const sugar = res.items.find(x => x.name.toLowerCase() === "sugar");
+  const sugar = res.items.find((x) => x.name.toLowerCase() === "sugar");
   assert.equal(sugar.count, 3.5);
   assert.equal(sugar.photosCount, 3);
 });
@@ -318,38 +349,38 @@ test("aggregateScanDetections: preserves photo-scoped bounding boxes for each im
     { name: "Coca-Cola", count: 3, unit: "unit", imageIdx: 0, box: [100, 200, 300, 400] },
     { name: "Corn Flakes", count: 2, unit: "pack", imageIdx: 0, box: [150, 250, 350, 450] },
     { name: "Coca-Cola", count: 2, unit: "unit", imageIdx: 1, box: [110, 210, 310, 410] },
-    { name: "Tata Salt", count: 1, unit: "kg", imageIdx: 1, box: [500, 600, 700, 800] }
+    { name: "Tata Salt", count: 1, unit: "kg", imageIdx: 1, box: [500, 600, 700, 800] },
   ];
   const res = Core.aggregateScanDetections(multiFrameDets, PRODUCTS);
   assert.equal(res.totalProducts, 3);
   assert.equal(res.totalUnits, 8); // 3 + 2 + 2 + 1 = 8
 
-  const coke = res.items.find(x => x.name.toLowerCase() === "coca-cola");
+  const coke = res.items.find((x) => x.name.toLowerCase() === "coca-cola");
   assert.ok(coke);
   assert.equal(coke.count, 5);
   assert.equal(coke.photosCount, 2);
   assert.deepEqual(coke.boxes[0], [100, 200, 300, 400]);
   assert.deepEqual(coke.boxes[1], [110, 210, 310, 410]);
 
-  const flakes = res.items.find(x => x.name.toLowerCase() === "corn flakes");
+  const flakes = res.items.find((x) => x.name.toLowerCase() === "corn flakes");
   assert.ok(flakes);
   assert.deepEqual(flakes.boxes[0], [150, 250, 350, 450]);
   assert.equal(flakes.boxes[1], undefined);
 
-  const salt = res.items.find(x => x.name.toLowerCase() === "tata salt");
+  const salt = res.items.find((x) => x.name.toLowerCase() === "tata salt");
   assert.ok(salt);
   assert.deepEqual(salt.boxes[1], [500, 600, 700, 800]);
   assert.equal(salt.boxes[0], undefined);
 });
 
 test("localCommandParse: extracts cost and price from English and Hindi phrases", () => {
-  const res1 = Core.localCommandParse("15 bottle Fortune Oil cost 135 sell 160", PRODUCTS);
+  const res1 = Core.localCommandParse("15 pack Sugar cost 135 sell 160", PRODUCTS);
   assert.equal(res1.items.length, 1);
   assert.equal(res1.items[0].qty, 15);
   assert.equal(res1.items[0].cost, 135);
   assert.equal(res1.items[0].price, 160);
 
-  const res2 = Core.localCommandParse("20 packet Parle-G kharid 20 bechna 25", PRODUCTS);
+  const res2 = Core.localCommandParse("20 pack Milk kharid 20 bechna 25", PRODUCTS);
   assert.equal(res2.items.length, 1);
   assert.equal(res2.items[0].qty, 20);
   assert.equal(res2.items[0].cost, 20);
@@ -357,9 +388,9 @@ test("localCommandParse: extracts cost and price from English and Hindi phrases"
 });
 
 test("parseVoiceIntake: parses spoken intake into reviewable inventory detections", () => {
-  const items = Core.parseVoiceIntake("15 bottle Fortune Oil cost 135 sell 160", PRODUCTS);
+  const items = Core.parseVoiceIntake("15 pack Sugar cost 135 sell 160", PRODUCTS);
   assert.equal(items.length, 1);
-  assert.equal(items[0].name, "Fortune Oil");
+  assert.equal(items[0].name, "Sugar");
   assert.equal(items[0].count, 15);
   assert.equal(items[0].cost, 135);
   assert.equal(items[0].price, 160);
@@ -368,4 +399,3 @@ test("parseVoiceIntake: parses spoken intake into reviewable inventory detection
   const empty = Core.parseVoiceIntake("", PRODUCTS);
   assert.deepEqual(empty, []);
 });
-

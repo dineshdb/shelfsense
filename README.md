@@ -35,23 +35,12 @@ it touches stock, and if the model is unreachable the advisor falls back
 to built-in arithmetic. Gemma keeps the cup's "Gemini or Gemma" rule
 honest either way.
 
-### The one-port local mode (recommended for local Gemma)
+### Local Gemma
 
-`local/merve-cors-proxy.mjs` is a tiny node shim (launchd plist included)
-that serves **the app and the AI on one origin**:
-
-    node local/merve-cors-proxy.mjs    # http://localhost:8283
-
-`/v1/*` forwards to a merve gateway (`127.0.0.1:8282`) with the CORS +
-Private-Network headers browsers demand; everything else serves `dist/`.
-Open `http://localhost:8283`, pick Local Gemma, base URL
-`http://localhost:8283` — same origin as the AI, so no browser
-(Firefox's Local Network Access, Chrome's PNA) can block the call. The
-public https site + `http://localhost:8283` also works in Chrome-family
-browsers; Firefox users should use the one-port mode (Firefox blocks
-public→localhost calls outright). Thinking models are handled too: if a
-server reasons before answering, the JSON is recovered from its
-reasoning trace.
+Point Settings at any CORS-enabled OpenAI-compatible server (the merve
+gateway's `127.0.0.1:8282` or your own). Thinking models are handled
+too: if a server reasons before answering, the JSON is recovered from
+its reasoning trace.
 
 ## Design
 

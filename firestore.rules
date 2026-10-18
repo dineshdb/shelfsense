@@ -11,7 +11,7 @@ service cloud.firestore {
         && d.moves is list && d.moves.size() <= 20000
         && d.khata is map
         && d.settings is map
-        && !d.settings.keys().hasAny(['apiKey'])
+        && !d.settings.keys().hasAny(['apiKey', 'aiApiKey'])
         && (d.encryptedApiKey == null || (d.encryptedApiKey is map && d.encryptedApiKey.keys().hasOnly(['iv', 'cipher'])));
     }
     match /users/{uid} {

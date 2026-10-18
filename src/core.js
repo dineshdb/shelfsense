@@ -191,7 +191,8 @@ function matchProduct(query, products = []) {
     const direct = products.find(
       (p) =>
         (p.barcode && String(p.barcode).trim().toLowerCase() === trimmed.toLowerCase()) ||
-        (p.aliases && p.aliases.some((a) => String(a).trim().toLowerCase() === trimmed.toLowerCase()))
+        (p.aliases &&
+          p.aliases.some((a) => String(a).trim().toLowerCase() === trimmed.toLowerCase())),
     );
     if (direct) return { product: direct, score: 1.0 };
   }
@@ -231,8 +232,16 @@ function convertQty(qty, said, pu) {
 const VALID_UNITS = new Set(["unit", "kg", "g", "L", "ml", "pack", "dozen"]);
 function normalizeModelParse(r, text, products) {
   const defIntent = r && r.intent === "restock" ? "restock" : "sale";
-  const customer = r && typeof r.customer === "string" && r.customer.trim() ? r.customer.trim() : null;
-  const paymentMode = r && (r.paymentMode === "khata" || r.paymentMode === "credit" || r.mode === "khata" || r.mode === "credit") ? "khata" : "cash";
+  const customer =
+    r && typeof r.customer === "string" && r.customer.trim() ? r.customer.trim() : null;
+  const paymentMode =
+    r &&
+    (r.paymentMode === "khata" ||
+      r.paymentMode === "credit" ||
+      r.mode === "khata" ||
+      r.mode === "credit")
+      ? "khata"
+      : "cash";
   let raw = [];
   if (Array.isArray(r)) {
     raw = r;
@@ -251,31 +260,42 @@ function normalizeModelParse(r, text, products) {
   } else if (r && (r.product || r.heard || r.name || r.item || r.product_name)) {
     raw = [r];
   }
-  const items = raw.map((it) => {
-    it = it && typeof it === "object" ? it : {};
-    const itemQuery = it.heard || it.product || it.name || it.item || it.product_name || it.title || it.query || "";
+  // Grounding: only items that resolve to a real catalog product may reach
+  // the bill — unheard-of names (ASR garble, hallucinations) are collected
+  // in `unmatched` so the UI can tell the owner what was skipped.
+  const items = [];
+  const unmatched = [];
+  for (const it0 of raw) {
+    const it = it0 && typeof it0 === "object" ? it0 : {};
+    const itemQuery =
+      it.heard || it.product || it.name || it.item || it.product_name || it.title || it.query || "";
     const p =
-      (typeof it.product === "string" && products.find((x) => x.name.toLowerCase() === it.product.toLowerCase())) ||
+      (typeof it.product === "string" &&
+        products.find((x) => x.name.toLowerCase() === it.product.toLowerCase())) ||
       (it.product && matchProduct(it.product, products).product) ||
       (it.name && matchProduct(it.name, products).product) ||
       (it.item && matchProduct(it.item, products).product) ||
       (it.product_name && matchProduct(it.product_name, products).product) ||
       (it.heard && matchProduct(it.heard, products).product) ||
       (itemQuery && matchProduct(itemQuery, products).product);
+    if (!p) {
+      if (itemQuery) unmatched.push(String(itemQuery));
+      continue;
+    }
     const parsedQty = +(it.qty ?? it.quantity ?? it.count);
     const q = isFinite(parsedQty) && parsedQty > 0 ? parsedQty : 1;
     const unitStr = it.unit || it.unit_name || null;
-    return {
+    items.push({
       intent: it.intent === "restock" ? "restock" : it.intent === "sale" ? "sale" : defIntent,
       query: itemQuery || "?",
       qty: q,
       unit: VALID_UNITS.has(unitStr) ? unitStr : null,
-      cost: it.cost != null && isFinite(+it.cost) ? +it.cost : (p?.cost || null),
-      price: it.price != null && isFinite(+it.price) ? +it.price : (p?.price || null),
+      cost: it.cost != null && isFinite(+it.cost) ? +it.cost : p?.cost || null,
+      price: it.price != null && isFinite(+it.price) ? +it.price : p?.price || null,
       productId: p ? p.id : null,
-    };
-  });
-  return { text, intent: defIntent, customer, paymentMode, items };
+    });
+  }
+  return { text, intent: defIntent, customer, paymentMode, items, unmatched };
 }
 
 function dailySeries(moves, days, now = Date.now()) {
@@ -356,51 +376,81 @@ function analyze(products, moves, s, now = Date.now()) {
 }
 
 function localCommandParse(text, products = []) {
-  const raw = String(text || '').trim();
+  const raw = String(text || "").trim();
   let clean = raw.toLowerCase();
 
   // 1. Detect customer (e.g. "Ramesh ko...", "to Ramesh", "for Ramesh", "Ramesh udhaar", "Ramesh ka bill")
   let customer = null;
-  const custMatch = clean.match(/(?:(?:to|for|customer)\s+([a-z\u0900-\u097F]+))|([a-z\u0900-\u097F]+)\s*(?:ko|ka|ke|bhai|ji)\b/i);
+  const custMatch = clean.match(
+    /(?:(?:to|for|customer)\s+([a-z\u0900-\u097F]+))|([a-z\u0900-\u097F]+)\s*(?:ko|ka|ke|bhai|ji)\b/i,
+  );
   if (custMatch) {
-    const candidate = (custMatch[1] || custMatch[2] || '').trim();
-    const ignoreWords = ['sold', 'sell', 'give', 'credit', 'udhaar', 'khata', 'cash', 'bill', 'order', 'ek', 'do', 'teen', 'me', 'mai', 'hai', 'tha'];
+    const candidate = (custMatch[1] || custMatch[2] || "").trim();
+    const ignoreWords = [
+      "sold",
+      "sell",
+      "give",
+      "credit",
+      "udhaar",
+      "khata",
+      "cash",
+      "bill",
+      "order",
+      "ek",
+      "do",
+      "teen",
+      "me",
+      "mai",
+      "hai",
+      "tha",
+    ];
     if (candidate && !ignoreWords.includes(candidate)) {
       customer = candidate.charAt(0).toUpperCase() + candidate.slice(1);
     }
   }
 
   // 2. Detect payment mode (credit / khata / udhaar)
-  const isKhata = /(\budhaar\b|\bkhata\b|\bcredit\b|\btab\b|\bhisab\b|\blikh\s*lo\b|\bbaad\s*me\b|उधार|खाता|क्रेडिट)/i.test(clean);
-  const paymentMode = isKhata ? 'khata' : 'cash';
+  const isKhata =
+    /(\budhaar\b|\bkhata\b|\bcredit\b|\btab\b|\bhisab\b|\blikh\s*lo\b|\bbaad\s*me\b|उधार|खाता|क्रेडिट)/i.test(
+      clean,
+    );
+  const paymentMode = isKhata ? "khata" : "cash";
 
   // 3. Detect intent (sale vs restock)
-  const isRestock = /(\breceived\b|\baaya\b|\bstock\b|\bmangwaya\b|\brestock\b|\binward\b|आया|स्टॉक)/i.test(clean);
-  const defaultIntent = isRestock ? 'restock' : 'sale';
+  const isRestock =
+    /(\breceived\b|\baaya\b|\bstock\b|\bmangwaya\b|\brestock\b|\binward\b|आया|स्टॉक)/i.test(clean);
+  const defaultIntent = isRestock ? "restock" : "sale";
 
   // 3b. Extract cost and sell price if present (e.g. "cost 135", "kharid 135", "sell 160", "price 160", "bechna 160")
   let globalCost = null;
   let globalPrice = null;
 
-  const costMatch = clean.match(/(?:cost|kharid|buy\s*price|buy|purchase|laagat)\s*[:=]?\s*(\d+(?:\.\d+)?)/i);
+  const costMatch = clean.match(
+    /(?:cost|kharid|buy\s*price|buy|purchase|laagat)\s*[:=]?\s*(\d+(?:\.\d+)?)/i,
+  );
   if (costMatch) {
     globalCost = parseFloat(costMatch[1]);
-    clean = clean.replace(costMatch[0], ' ');
+    clean = clean.replace(costMatch[0], " ");
   }
 
-  const priceMatch = clean.match(/(?:sell\s*price|sell\s*at|sell|price|mrp|rate|bechna|bikri)\s*[:=]?\s*(\d+(?:\.\d+)?)/i);
+  const priceMatch = clean.match(
+    /(?:sell\s*price|sell\s*at|sell|price|mrp|rate|bechna|bikri)\s*[:=]?\s*(\d+(?:\.\d+)?)/i,
+  );
   if (priceMatch) {
     globalPrice = parseFloat(priceMatch[1]);
-    clean = clean.replace(priceMatch[0], ' ');
+    clean = clean.replace(priceMatch[0], " ");
   }
 
   // 4. Clean away conversational words and command wrappers
   clean = clean
-    .replace(/(?:sold|sell|sale|give\s*me|give|diya|becha|bikri|de\s*do|dena|mangwaya|received|restock|add|want|i\s*want|chahiye|mangta|please|kripya|put|daal\s*do|rakh\s*do|pack\s*karo|pack\s*kar\s*do)\b/gi, '')
-    .replace(/(?:to|for|customer)\s+[a-z\u0900-\u097F]+/gi, '')
-    .replace(/[a-z\u0900-\u097F]+\s*(?:ko|ka|ke|bhai|ji)\b/gi, '')
-    .replace(/(?:udhaar|khata|credit|cash|likh\s*lo|baad\s*me|hisab)\b/gi, '')
-    .replace(/^[.,!?;:]+|[.,!?;:]+$/g, '')
+    .replace(
+      /(?:sold|sell|sale|give\s*me|give|diya|becha|bikri|de\s*do|dena|mangwaya|received|restock|add|want|i\s*want|chahiye|mangta|please|kripya|put|daal\s*do|rakh\s*do|pack\s*karo|pack\s*kar\s*do)\b/gi,
+      "",
+    )
+    .replace(/(?:to|for|customer)\s+[a-z\u0900-\u097F]+/gi, "")
+    .replace(/[a-z\u0900-\u097F]+\s*(?:ko|ka|ke|bhai|ji)\b/gi, "")
+    .replace(/(?:udhaar|khata|credit|cash|likh\s*lo|baad\s*me|hisab)\b/gi, "")
+    .replace(/^[.,!?;:]+|[.,!?;:]+$/g, "")
     .trim();
 
   // 5. Split multiple items by 'and', 'aur', 'or', ',', 'tatha'
@@ -408,24 +458,61 @@ function localCommandParse(text, products = []) {
   const items = [];
 
   const numberMap = {
-    'aadha': 0.5, 'आधा': 0.5, 'half': 0.5,
-    'paav': 0.25, 'पाव': 0.25, 'quarter': 0.25,
-    'dedh': 1.5, 'डेढ़': 1.5,
-    'dhai': 2.5, 'ढाई': 2.5,
-    'ek': 1, 'एक': 1, 'one': 1, 'a': 1, 'an': 1,
-    'do': 2, 'दो': 2, 'two': 2,
-    'teen': 3, 'तीन': 3, 'three': 3,
-    'chaar': 4, 'char': 4, 'चार': 4, 'four': 4,
-    'paanch': 5, 'panch': 5, 'पांच': 5, 'पाँच': 5, 'five': 5,
-    'chhah': 6, 'chheh': 6, 'छह': 6, 'six': 6,
-    'saat': 7, 'सात': 7, 'seven': 7,
-    'aath': 8, 'आठ': 8, 'eight': 8,
-    'nau': 9, 'नौ': 9, 'nine': 9,
-    'das': 10, 'दस': 10, 'ten': 10,
-    'darjan': 12, 'दर्जन': 12, 'dozen': 12
+    aadha: 0.5,
+    आधा: 0.5,
+    half: 0.5,
+    paav: 0.25,
+    पाव: 0.25,
+    quarter: 0.25,
+    dedh: 1.5,
+    डेढ़: 1.5,
+    dhai: 2.5,
+    ढाई: 2.5,
+    ek: 1,
+    एक: 1,
+    one: 1,
+    a: 1,
+    an: 1,
+    do: 2,
+    दो: 2,
+    two: 2,
+    teen: 3,
+    तीन: 3,
+    three: 3,
+    chaar: 4,
+    char: 4,
+    चार: 4,
+    four: 4,
+    paanch: 5,
+    panch: 5,
+    पांच: 5,
+    पाँच: 5,
+    five: 5,
+    chhah: 6,
+    chheh: 6,
+    छह: 6,
+    six: 6,
+    saat: 7,
+    सात: 7,
+    seven: 7,
+    aath: 8,
+    आठ: 8,
+    eight: 8,
+    nau: 9,
+    नौ: 9,
+    nine: 9,
+    das: 10,
+    दस: 10,
+    ten: 10,
+    darjan: 12,
+    दर्जन: 12,
+    dozen: 12,
   };
 
-  for (const clause of (itemClauses.length ? itemClauses : [clean])) {
+  // Grounding: a clause that doesn't resolve to a catalog product is noise
+  // (ASR garble) — skipped and reported, never staged as a dead bill line.
+  const unmatched = [];
+  for (const clause of itemClauses.length ? itemClauses : [clean]) {
     let c = clause.trim();
     if (!c) continue;
 
@@ -440,10 +527,18 @@ function localCommandParse(text, products = []) {
 
     for (let i = 0; i < words.length; i++) {
       const w = words[i].toLowerCase();
-      if (/^(cost|kharid|buy|purchase|laagat)$/i.test(w) && i + 1 < words.length && !isNaN(parseFloat(words[i + 1]))) {
+      if (
+        /^(cost|kharid|buy|purchase|laagat)$/i.test(w) &&
+        i + 1 < words.length &&
+        !isNaN(parseFloat(words[i + 1]))
+      ) {
         cost = parseFloat(words[i + 1]);
         i++;
-      } else if (/^(sell|price|mrp|rate|bechna|bikri)$/i.test(w) && i + 1 < words.length && !isNaN(parseFloat(words[i + 1]))) {
+      } else if (
+        /^(sell|price|mrp|rate|bechna|bikri)$/i.test(w) &&
+        i + 1 < words.length &&
+        !isNaN(parseFloat(words[i + 1]))
+      ) {
         price = parseFloat(words[i + 1]);
         i++;
       } else if (!isNaN(parseFloat(w)) && isFinite(w)) {
@@ -451,51 +546,58 @@ function localCommandParse(text, products = []) {
       } else if (numberMap[w] !== undefined) {
         qty = numberMap[w];
       } else if (/^(kg|kgs|kilo|kilos|किलो)$/i.test(w)) {
-        unit = 'kg';
+        unit = "kg";
       } else if (/^(g|gm|gms|gram|grams|ग्राम)$/i.test(w)) {
-        unit = 'g';
+        unit = "g";
       } else if (/^(l|lt|lts|liter|liters|litre|litres|लीटर)$/i.test(w)) {
-        unit = 'L';
+        unit = "L";
       } else if (/^(ml|mls|milliliter)$/i.test(w)) {
-        unit = 'ml';
+        unit = "ml";
       } else if (/^(pack|packs|packet|packets|पैकेट)$/i.test(w)) {
-        unit = 'pack';
+        unit = "pack";
       } else if (/^(dozen|doz|darjan|दर्जन)$/i.test(w)) {
-        unit = 'dozen';
+        unit = "dozen";
       } else if (/^(bottle|bottles|can|cans|bag|bags|box|boxes|piece|pieces|dabba)$/i.test(w)) {
-        if (!unit) unit = 'pack';
+        if (!unit) unit = "pack";
       } else {
         remWords.push(words[i]);
       }
     }
 
-    const queryProduct = remWords.join(' ').trim();
-    if (queryProduct) {
-      const match = matchProduct(queryProduct, products);
-      items.push({
-        intent: defaultIntent,
-        query: queryProduct,
-        qty: qty || 1,
-        unit: unit || match.product?.unit || 'unit',
-        cost: cost != null ? cost : (match.product?.cost || null),
-        price: price != null ? price : (match.product?.price || null),
-        productId: match.product ? match.product.id : null
-      });
+    const queryProduct = remWords.join(" ").trim();
+    if (!queryProduct) continue;
+    const match = matchProduct(queryProduct, products);
+    if (!match.product) {
+      unmatched.push(queryProduct);
+      continue;
     }
+    items.push({
+      intent: defaultIntent,
+      query: queryProduct,
+      qty: qty || 1,
+      unit: unit || match.product?.unit || "unit",
+      cost: cost != null ? cost : match.product?.cost || null,
+      price: price != null ? price : match.product?.price || null,
+      productId: match.product ? match.product.id : null,
+    });
   }
 
   // Fallback if no items extracted
   if (!items.length && clean) {
     const match = matchProduct(clean, products);
-    items.push({
-      intent: defaultIntent,
-      query: clean,
-      qty: 1,
-      unit: match.product?.unit || 'unit',
-      cost: null,
-      price: match.product?.price || null,
-      productId: match.product ? match.product.id : null
-    });
+    if (match.product) {
+      items.push({
+        intent: defaultIntent,
+        query: clean,
+        qty: 1,
+        unit: match.product?.unit || "unit",
+        cost: null,
+        price: match.product?.price || null,
+        productId: match.product ? match.product.id : null,
+      });
+    } else if (unmatched[unmatched.length - 1] !== clean) {
+      unmatched.push(clean); // don't double-report the single-clause case
+    }
   }
 
   return {
@@ -503,7 +605,8 @@ function localCommandParse(text, products = []) {
     intent: defaultIntent,
     customer,
     paymentMode,
-    items
+    items,
+    unmatched,
   };
 }
 
@@ -515,23 +618,33 @@ function parseVoiceIntake(text, products = []) {
   if (!text || !text.trim()) return [];
   const parsed = localCommandParse(text, products);
   const items = parsed.items || [];
-  return items.map(it => {
+  return items.map((it) => {
     const m = matchProduct(it.query, products);
     const p = m.product;
-    const cleanName = p ? p.name : (it.query ? it.query.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ') : 'Product');
-    const unitCost = it.cost != null && it.cost > 0 ? +it.cost : (p?.cost || null);
-    const sellPrice = it.price != null && it.price > 0 ? +it.price : (p?.price || (unitCost ? +(unitCost * 1.35).toFixed(2) : null));
+    const cleanName = p
+      ? p.name
+      : it.query
+        ? it.query
+            .split(/\s+/)
+            .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+            .join(" ")
+        : "Product";
+    const unitCost = it.cost != null && it.cost > 0 ? +it.cost : p?.cost || null;
+    const sellPrice =
+      it.price != null && it.price > 0
+        ? +it.price
+        : p?.price || (unitCost ? +(unitCost * 1.35).toFixed(2) : null);
     return {
       name: cleanName,
-      category: p?.category || 'Other',
+      category: p?.category || "Other",
       count: Math.max(1, +it.qty || 1),
-      unit: it.unit || p?.unit || 'unit',
+      unit: it.unit || p?.unit || "unit",
       cost: unitCost,
       price: sellPrice,
       confidence: m.score || 0.95,
       include: true,
       matchId: p?.id || null,
-      photosCount: 1
+      photosCount: 1,
     };
   });
 }
@@ -576,8 +689,8 @@ function aggregateScanDetections(dets = [], existingProducts = []) {
         category: d.category || (matched ? matched.category : "Other"),
         count,
         unit: d.unit || (matched ? matched.unit : "unit"),
-        cost: d.cost != null ? +d.cost : (matched?.cost || null),
-        price: d.price != null ? +d.price : (matched?.price || null),
+        cost: d.cost != null ? +d.cost : matched?.cost || null,
+        price: d.price != null ? +d.price : matched?.price || null,
         confidence: d.confidence || 0.85,
         box: d.box || null,
         boxes,
@@ -600,4 +713,14 @@ function aggregateScanDetections(dets = [], existingProducts = []) {
   };
 }
 
-export const Core = { strip, matchProduct, convertQty, normalizeModelParse, analyze, dailySeries, localCommandParse, aggregateScanDetections, parseVoiceIntake };
+export const Core = {
+  strip,
+  matchProduct,
+  convertQty,
+  normalizeModelParse,
+  analyze,
+  dailySeries,
+  localCommandParse,
+  aggregateScanDetections,
+  parseVoiceIntake,
+};

@@ -72,7 +72,7 @@ import "../styles/global.css";
       import { initializeApp, getApps } from "firebase/app";
       import { getAuth, signInAnonymously, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut } from "firebase/auth";
       import { getFirestore, doc, getDoc, onSnapshot, runTransaction } from "firebase/firestore";
-      window.__firebase = { initializeApp, getAuth, signInAnonymously, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut, getFirestore, doc, getDoc, onSnapshot, runTransaction };
+      window.__firebase = { initializeApp, getApps, getAuth, signInAnonymously, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut, getFirestore, doc, getDoc, onSnapshot, runTransaction };
 
       // Core modules & view components
       import { Core } from "../core.js";
@@ -80,7 +80,7 @@ import "../styles/global.css";
       import { $, esc, uid, money, fq, daysTxt, ago, emoji, beep, toast, speak, fileToURL, resize, drawBoxes } from "../modules/utils.js";
       import { encodeWav, b64of } from "../modules/audio.js";
       import { S, U, set, prod, findByBarcode, save } from "../modules/state.js";
-      import { aiReady, aiLabel, gemini, aiTranscribe, geminiDetect, receiptParse, fetchActiveModels, parseVoiceCommand } from "../modules/ai.js";
+      import { aiReady, aiLabel, gemini, aiTranscribe, geminiDetect, receiptParse, fetchActiveModels, parseVoiceCommand, testConnection, remoteProvider } from "../modules/ai.js";
       import { initWebLLMEngine, unloadWebLLMEngine, deleteLocalModelStorage, isLocalEngineReady, engineState, checkWebGPUSupport } from "../modules/webllm.js";
       import { recordKhataDebit, recordKhataPayment } from "../modules/khata.js";
       import { initCloudSync, loginWithGoogle, logoutCloud, manualSyncNow, cloudState } from "../modules/cloud.js";
@@ -927,7 +927,7 @@ async function command(text, source) {
   U.voice.busy = false;
   if (!P.items.length) {
     render();
-    toast("I didn't catch a product. Try: “two bread sold”", 'warn');
+    toast(P.unmatched?.length ? `Not in stock: ${P.unmatched.slice(0, 3).join(', ')}${P.unmatched.length > 3 ? '…' : ''} — add it in Intake first` : "I didn't catch a product. Try: “two bread sold”", 'warn', 4500);
     return;
   }
   if (P.customer) U.voice.customer = P.customer;
@@ -943,6 +943,7 @@ async function command(text, source) {
     include: true,
     source
   }));
+  if (P.unmatched?.length) toast(`🚫 Not in stock, skipped: ${P.unmatched.slice(0, 3).join(', ')}${P.unmatched.length > 3 ? '…' : ''}`, 'warn', 4000);
   U.voice.statusMsg = `🧾 Added ${P.items.length} line${P.items.length > 1 ? 's' : ''}. Speak more items or say "Done / Ho gaya".`;
   render();
   toast('🧾 ' + P.items.length + ' line' + (P.items.length > 1 ? 's' : '') + (P.customer ? ` for ${P.customer}` : '') + (P.paymentMode === 'khata' ? ' (📖 Khata)' : ''), 'ok', 2600);
@@ -1635,6 +1636,30 @@ const ACT = {
     document.querySelector('meta[name="theme-color"]')?.setAttribute("content", dark ? "#010507" : "#ffffff");
     render();
   },
+  aiMode: async el => {
+    if (el.dataset.v === 'device') {
+      if (S.settings.localAiEnabled) return;
+      S.settings.localAiEnabled = true;
+      save();
+      render();
+      await ACT.startLocalAi(); // resets the flag itself if WebGPU is missing
+      return;
+    }
+    // Remote: the provider dropdown picks the transport; just park the engine.
+    if (S.settings.localAiEnabled) {
+      S.settings.localAiEnabled = false;
+      save();
+      render();
+      await ACT.unloadLocalAi(); // frees the model RAM, saves + renders again
+    } else {
+      render();
+    }
+  },
+  showAiKey: el => {
+    const k = $('#aiKey');
+    k.type = k.type === 'password' ? 'text' : 'password';
+    el.textContent = k.type === 'password' ? 'Show' : 'Hide';
+  },
   setupSkip: () => {
     const nm = ($('#su_name')?.value || '').trim(); if (nm) set().storeName = nm;
     const cur = ($('#su_cur')?.value || '').trim(); if (cur) set().currency = cur;
@@ -1667,9 +1692,9 @@ const ACT = {
     } catch (e) {
       st.busy = false;
       const m = e.message || String(e);
-      st.msg = /HTTP 405/.test(m) ? 'That port is a raw gateway without CORS (405). Use the shim: http://localhost:8283'
+      st.msg = /HTTP 405/.test(m) ? 'That port is a raw gateway without CORS (405). Point the URL at a CORS-enabled OpenAI-compatible server'
         : /HTTP 404/.test(m) ? 'No OpenAI-compatible endpoint there — check the URL'
-        : /fetch/i.test(m) || /net::|NetworkError|Load failed/i.test(m) ? 'The browser blocked the call to your local server. Easiest fix: open http://localhost:8283 — it serves this app AND the AI on one origin.'
+        : /fetch/i.test(m) || /net::|NetworkError|Load failed/i.test(m) ? 'The browser blocked the call to your local server. Run this app from the same origin as the AI (one port serving both).'
         : m;
       render();
     }
@@ -1815,21 +1840,25 @@ const ACT = {
   },
   test: async () => {
     try {
-      const r = await gemini([{ text: 'Reply with JSON {"ok":true}' }]);
-      toast(r && r.ok ? `✅ ${aiLabel()} connected` : 'Unexpected reply', r && r.ok ? 'ok' : 'warn');
+      if (remoteProvider() === 'openrouter' && !set().aiApiKey) {
+        return toast('Paste your OpenRouter key first — free at openrouter.ai/keys', 'warn', 5000);
+      }
+      const ok = await testConnection();
+      toast(ok ? `✅ ${aiLabel()} connected` : 'Unexpected reply', ok ? 'ok' : 'warn');
     } catch (e) {
       toast(e.message, 'err', 5000);
     }
   },
   export: () => {
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([JSON.stringify({ ...S, settings: { ...S.settings, apiKey: '' } }, null, 2)], { type: 'application/json' }));
+    a.href = URL.createObjectURL(new Blob([JSON.stringify({ ...S, settings: { ...S.settings, apiKey: '', aiApiKey: '' } }, null, 2)], { type: 'application/json' }));
     a.download = `shelfsense-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
   },
   reset: () => {
     if (confirm('Erase all products and sales on this device?')) {
       S.products = []; S.moves = []; S.khata = {}; U.ai.text = '';
+      S.settings.aiApiKey = ''; // endpoint keys are credentials — never survive a wipe
       save(); render(); toast('All data erased');
     }
   }
@@ -1865,7 +1894,7 @@ document.addEventListener('change', ev => {
     const k = t.dataset.set;
     S.settings[k] = t.type === 'number' ? (+t.value || 0) : t.value.trim();
     save();
-    if (k === 'model' || k === 'voiceEngine' || k === 'localAiModel') render();
+    if (k === 'model' || k === 'voiceEngine' || k === 'localAiModel' || k === 'aiProvider') render();
     $('#storeName').textContent = set().storeName;
     const pill = $('#enginePill');
     pill.className = 'pill ' + (aiReady() ? '' : 'off');
@@ -1948,7 +1977,9 @@ document.addEventListener('change', ev => {
       S.products = d.products;
       S.moves = d.moves;
       if (d.khata) S.khata = d.khata;
-      if (d.settings) Object.assign(S.settings, { ...d.settings, apiKey: S.settings.apiKey });
+      // Exports strip credentials (apiKey + aiApiKey); keep this device's keys
+      // on import so the owner doesn't have to retype them.
+      if (d.settings) Object.assign(S.settings, { ...d.settings, apiKey: S.settings.apiKey, aiApiKey: S.settings.aiApiKey });
       save();
       render();
       toast('Imported', 'ok');
