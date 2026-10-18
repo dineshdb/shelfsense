@@ -1,9 +1,10 @@
 // ShelfSense AI — Settings View
 import { MODEL_GUIDE } from '../modules/constants.js';
-import { esc } from '../modules/utils.js';
+import { esc, ago } from '../modules/utils.js';
 import { set } from '../modules/state.js';
 import { aiReady, aiLabel } from '../modules/ai.js';
 import { MOBILE_LOCAL_MODELS, engineState } from '../modules/webllm.js';
+import { cloudState } from '../modules/cloud.js';
 
 export function vSettings(S, U) {
   const s = set();
@@ -38,10 +39,44 @@ export function vSettings(S, U) {
   }
 
   return `<div class="settingsgrid">
-  ${sec(1, '🏪', 't-ok', 'Store', `
+  ${sec(1, '☁️', 't-ind', 'Cloud Sync & Google Account', `
+    <div class="flex between" style="align-items:center;margin-bottom:8px">
+      <span class="badge ${cloudState.loggedIn ? 'b-ok' : 'b-info'}" style="font-size:11px;font-weight:700">
+        ${cloudState.loggedIn ? '🟢 Online Cloud Sync Active' : '⚪ Local-Only Mode (Offline Safe)'}
+      </span>
+      ${cloudState.lastSyncedAt ? `<span class="muted small">Last synced: ${ago(cloudState.lastSyncedAt)}</span>` : ''}
+    </div>
+    ${cloudState.loggedIn ? `
+      <div style="background:var(--secondary);border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px;margin-bottom:10px">
+        <div class="flex between" style="align-items:center">
+          <div>
+            <b>${esc(cloudState.user?.displayName || 'Store Owner')}</b>
+            <div class="muted small">${esc(cloudState.user?.email || '')}</div>
+          </div>
+          <button class="btn sm ghost danger" data-a="cloudLogout" style="font-size:11px;padding:3px 8px">🚪 Sign Out</button>
+        </div>
+        <div class="muted small mt" style="font-size:11px;display:flex;align-items:center;gap:4px">
+          <span>🔐</span> <b>Encrypted Settings Vault:</b> Gemini API key & settings automatically backed up with AES-GCM encryption.
+        </div>
+      </div>
+      <div class="g2">
+        <button class="btn pri" data-a="cloudSyncNow" ${cloudState.isSyncing ? 'disabled' : ''}>${cloudState.isSyncing ? '🔄 Syncing…' : '⚡ Sync Now'}</button>
+        <button class="btn sec" data-a="save">💾 Save Local</button>
+      </div>
+    ` : `
+      <div class="muted small" style="margin-bottom:10px;line-height:1.4">
+        Your store catalog, sales, and Khata are currently saved locally on this device. Sign in with Google to enable automatic multi-device synchronization and encrypted cloud backup.
+      </div>
+      <div class="g2">
+        <button class="btn pri" data-a="cloudLogin">🔑 Sign in with Google</button>
+        <button class="btn sec" data-a="cloudSyncNow">💾 Sync Local</button>
+      </div>
+    `}
+  `)}
+  ${sec(2, '🏪', 't-ok', 'Store', `
     <label class="lb">Shop name</label>${inp('storeName')}
     <div class="g2"><div><label class="lb">Currency</label>${inp('currency')}</div><div><label class="lb">Voice language</label><select class="f" data-set="lang">${[['en-US', 'English (US)'], ['en-GB', 'English (UK)'], ['es-ES', 'Español (ES)'], ['es-MX', 'Español (MX)'], ['es-CR', 'Español (CR)'], ['hi-IN', 'हिन्दी Hindi'], ['ne-NP', 'नेपाली Nepali'], ['fr-FR', 'Français'], ['pt-BR', 'Português']].map(([v, l]) => `<option value="${v}" ${v === s.lang ? 'selected' : ''}>${l}</option>`).join('')}</select></div></div>`)}
-  ${sec(2, '🤖', 't-ind', 'AI backend', `
+  ${sec(3, '🤖', 't-ind', 'AI backend', `
     <div class="ch" style="border:0;padding:0 0 2px"><span class="pill ${aiReady() ? '' : 'off'}"><i></i>${aiReady() ? aiLabel() : 'AI off'}</span></div>
     <label class="lb">Backend</label><select class="f" data-set="aiMode">${[['gemini', 'Google Gemini API (cloud, API key)'], ['custom', 'Local Google Gemma Server (Ollama / llama-server with Gemma)']].map(([v, l]) => `<option value="${v}" ${v === s.aiMode ? 'selected' : ''}>${l}</option>`).join('')}</select>
     <label class="lb">Google Gemini API key</label><div class="inrow">${inp('apiKey', 'password', 'id="key" placeholder="AIza…" autocomplete="off"')}<button class="btn sm ghost" data-a="showkey">Show</button></div>
@@ -67,7 +102,7 @@ export function vSettings(S, U) {
       <div class="muted small mt">For running a Google Gemma server on PC/LAN (e.g. <code>ollama run gemma2</code> or <code>llama-server -hf google/gemma-4-e4a</code>). If using in-browser mobile AI below, you do not need this!</div>
     </div>
     <button class="btn sec w mt" data-a="test">🔌 Test AI connection</button>`)}
-  ${sec(3, '📱', 't-ok', 'On-Device Google Gemma AI (Zero-Install · $0)', `
+  ${sec(4, '📱', 't-ok', 'On-Device Google Gemma AI (Zero-Install · $0)', `
     ${tg('localAiEnabled', '📱 Run Google Gemma Directly on Device (WebGPU)', 'Zero install! Downloads Google Gemma weights into phone browser storage once, then runs 100% offline with zero cloud cost.')}
     <div style="margin-top:10px">
       <label class="lb">Select Mobile Model</label>
@@ -116,7 +151,7 @@ export function vSettings(S, U) {
     </div>
     <div class="muted small mt" style="font-size:11.5px">📶 <b>Mobile Tip:</b> Models download once into browser storage and never consume cellular data again. Recommended to download over Wi-Fi. Tap "Sleep / Free RAM" anytime to release phone memory.</div>
   `)}
-  ${sec(4, '🎙️', 't-info', 'Voice & Audio POS', `
+  ${sec(5, '🎙️', 't-info', 'Voice & Audio POS', `
     <label class="lb">Voice Engine Strategy</label>
     <select class="f" data-set="voiceEngine">
       <option value="auto" ${(s.voiceEngine || 'auto') === 'auto' ? 'selected' : ''}>🔄 Smart Auto (Local Gemma with Cloud Fallback)</option>
@@ -130,18 +165,18 @@ export function vSettings(S, U) {
       <label class="lb">Max Multi-Photo Scan Limit</label>${inp('maxScanImages', 'number', 'min="1" max="10"')}
       <div class="muted small mt">Number of photos allowed per inventory shelf sweep or wholesale delivery bill (default: 5).</div>
     </div>`)}
-  ${sec(5, '📊', 't-warn', 'Reorder rules', `
+  ${sec(6, '📊', 't-warn', 'Reorder rules', `
     <div class="g3"><div><label class="lb">Lead days</label>${inp('leadDays', 'number', 'min="0"')}</div><div><label class="lb">Cover days</label>${inp('coverDays', 'number', 'min="1"')}</div><div><label class="lb">Safety days</label>${inp('safetyDays', 'number', 'min="0"')}</div></div>
     <label class="lb">Sales history window (days)</label>${inp('windowDays', 'number', 'min="7"')}
     <div class="muted small mt">Reorder point = avg daily sales × (lead + safety). Order = avg daily × (lead + cover + safety) − stock.</div>`)}
-  ${sec(6, '🎨', 't-slow', 'Appearance', `
+  ${sec(7, '🎨', 't-slow', 'Appearance', `
     <div class="flex between"><span class="muted small">Follows your choice; Auto tracks the system.</span>
       <div class="chips" role="group" aria-label="Theme">${[['auto', 'Auto'], ['light', 'Light'], ['dark', 'Dark']].map(([v, l]) => {
         let cur = 'auto';
         try { cur = localStorage.getItem("shelfsense:theme") || 'auto'; } catch {}
         return `<button class="chip ${cur === v ? 'on' : ''}" data-a="theme" data-v="${v}">${l}</button>`;
       }).join('')}</div></div>`)}
-  ${sec(7, '💾', 't-slow', 'Data', `<div class="g2">
+  ${sec(8, '💾', 't-slow', 'Data', `<div class="g2">
     <button class="btn sec" data-a="demo">✨ Load demo</button><button class="btn sec" data-a="export">⬇️ Export</button>
     <button class="btn sec" data-a="pick" data-v="importIn">⬆️ Import</button><button class="btn danger" data-a="reset">🗑️ Reset all</button></div>`)}
   <div class="muted small" style="text-align:center;padding:4px 0 16px">ShelfSense AI · Smart Retail Assistant</div></div>`;

@@ -1,16 +1,18 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // One anonymous device-user, one state doc. Writes are validated so the
-    // open anonymous auth can't be used as free storage: fixed field set,
-    // list-size caps, and the Gemini key must never leave the device.
+    // One authenticated store user, one state doc. Writes are validated so the
+    // database cannot be abused: fixed field set, list-size caps, Khata credit ledger,
+    // and plaintext API keys must never leave the device.
     function validState(d) {
-      return d.keys().hasOnly(['products', 'moves', 'settings', 'savedAt'])
+      return d.keys().hasOnly(['products', 'moves', 'khata', 'settings', 'savedAt', 'encryptedApiKey', 'userEmail', 'updatedAt'])
         && d.savedAt is number
         && d.products is list && d.products.size() <= 2000
         && d.moves is list && d.moves.size() <= 20000
+        && d.khata is map
         && d.settings is map
-        && !d.settings.keys().hasAny(['apiKey']);
+        && !d.settings.keys().hasAny(['apiKey'])
+        && (d.encryptedApiKey == null || (d.encryptedApiKey is map && d.encryptedApiKey.keys().hasOnly(['iv', 'cipher'])));
     }
     match /users/{uid} {
       allow read, delete: if request.auth != null && request.auth.uid == uid;
