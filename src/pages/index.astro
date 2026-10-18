@@ -1306,6 +1306,8 @@ const ACT = {
   cloudLogin: () => loginWithGoogle(),
   cloudLogout: () => logoutCloud(),
   cloudSyncNow: () => manualSyncNow(),
+  // the settings card's "Save Local" button — writes localStorage without cloud
+  save: () => { save(false); render(); toast('Saved on this device', 'ok'); },
   demo,
   share,
   advisor,
