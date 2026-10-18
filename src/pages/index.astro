@@ -50,7 +50,7 @@ import "../styles/global.css";
     <div class="brand" data-a="tab" data-v="home" title="Home">
       <div class="logo" id="logo"></div>
       <div class="bt"><b id="storeName">My Grocery Store</b>
-        <span class="bp"><span class="pill off" id="enginePill"><i></i>AI off</span><span class="pill off" id="cloudPill" style="display:none"><i></i></span></span></div>
+        <span class="bp"><span class="pill off" id="enginePill"><i></i>AI off</span><span class="pill off" id="cloudPill" style="display:none;cursor:pointer" data-a="tab" data-v="settings" title="Cloud Sync Settings"><i></i></span></span></div>
     </div>
     <nav class="nav">
       <button data-a="tab" data-v="scan"><span>Intake</span></button>
@@ -70,9 +70,9 @@ import "../styles/global.css";
       // Firebase from npm (Vite bundles it) — exposed through the same
       // window.__firebase door the app's sync engine reads.
       import { initializeApp, getApps } from "firebase/app";
-      import { getAuth, signInAnonymously, onAuthStateChanged } from "firebase/auth";
+      import { getAuth, signInAnonymously, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut } from "firebase/auth";
       import { getFirestore, doc, getDoc, onSnapshot, runTransaction } from "firebase/firestore";
-      window.__firebase = { initializeApp, getAuth, signInAnonymously, onAuthStateChanged, getFirestore, doc, getDoc, onSnapshot, runTransaction };
+      window.__firebase = { initializeApp, getAuth, signInAnonymously, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut, getFirestore, doc, getDoc, onSnapshot, runTransaction };
 
       // Core modules & view components
       import { Core } from "../core.js";
@@ -83,7 +83,7 @@ import "../styles/global.css";
       import { aiReady, aiLabel, gemini, aiTranscribe, geminiDetect, receiptParse, fetchActiveModels, parseVoiceCommand } from "../modules/ai.js";
       import { initWebLLMEngine, unloadWebLLMEngine, deleteLocalModelStorage, isLocalEngineReady, engineState, checkWebGPUSupport } from "../modules/webllm.js";
       import { recordKhataDebit, recordKhataPayment } from "../modules/khata.js";
-      import { initCloudSync } from "../modules/cloud.js";
+      import { initCloudSync, loginWithGoogle, logoutCloud, manualSyncNow, cloudState } from "../modules/cloud.js";
 
       import { vSetup } from "../views/setup.js";
       import { vHome } from "../views/home.js";
@@ -1303,6 +1303,9 @@ function saveP() {
 /* ---------- Delegated Event Dispatcher ---------- */
 const ACT = {
   tab: el => go(el.dataset.v),
+  cloudLogin: () => loginWithGoogle(),
+  cloudLogout: () => logoutCloud(),
+  cloudSyncNow: () => manualSyncNow(),
   demo,
   share,
   advisor,
