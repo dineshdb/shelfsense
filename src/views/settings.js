@@ -43,7 +43,7 @@ export function vSettings(S, U) {
     <div class="g2"><div><label class="lb">Currency</label>${inp('currency')}</div><div><label class="lb">Voice language</label><select class="f" data-set="lang">${[['en-US', 'English (US)'], ['en-GB', 'English (UK)'], ['es-ES', 'Español (ES)'], ['es-MX', 'Español (MX)'], ['es-CR', 'Español (CR)'], ['hi-IN', 'हिन्दी Hindi'], ['ne-NP', 'नेपाली Nepali'], ['fr-FR', 'Français'], ['pt-BR', 'Português']].map(([v, l]) => `<option value="${v}" ${v === s.lang ? 'selected' : ''}>${l}</option>`).join('')}</select></div></div>`)}
   ${sec(2, '🤖', 't-ind', 'AI backend', `
     <div class="ch" style="border:0;padding:0 0 2px"><span class="pill ${aiReady() ? '' : 'off'}"><i></i>${aiReady() ? aiLabel() : 'AI off'}</span></div>
-    <label class="lb">Backend</label><select class="f" data-set="aiMode">${[['gemini', 'Google Gemini API (cloud, API key)'], ['custom', 'Custom / local server (OpenAI-compatible — Gemma, llama.cpp, ollama…)']].map(([v, l]) => `<option value="${v}" ${v === s.aiMode ? 'selected' : ''}>${l}</option>`).join('')}</select>
+    <label class="lb">Backend</label><select class="f" data-set="aiMode">${[['gemini', 'Google Gemini API (cloud, API key)'], ['custom', 'Local Google Gemma Server (Ollama / llama-server with Gemma)']].map(([v, l]) => `<option value="${v}" ${v === s.aiMode ? 'selected' : ''}>${l}</option>`).join('')}</select>
     <label class="lb">Google Gemini API key</label><div class="inrow">${inp('apiKey', 'password', 'id="key" placeholder="AIza…" autocomplete="off"')}<button class="btn sm ghost" data-a="showkey">Show</button></div>
     <div class="flex between mt" style="align-items:center;margin-bottom:4px">
       <label class="lb" style="margin:0">Gemini model</label>
@@ -62,13 +62,13 @@ export function vSettings(S, U) {
       <div class="muted small" style="margin-top:3px">💡 <b>Best for:</b> ${esc(info.useCase)}</div>
     </div>
     <div class="mt" style="border-top:1px solid var(--line);padding-top:12px">
-      <label class="lb">External Local server URL (Optional)</label>${inp('aiBaseUrl', 'text', 'placeholder="http://localhost:8080"')}
-      <div class="g2"><div><label class="lb">Local model</label>${inp('aiModel')}</div><div></div></div>
-      <div class="muted small mt">For running an external server on PC/LAN (e.g. Ollama or llama.cpp). If using in-browser mobile AI below, you do not need this!</div>
+      <label class="lb">External Google Gemma Server URL (Optional)</label>${inp('aiBaseUrl', 'text', 'placeholder="http://localhost:8080"')}
+      <div class="g2"><div><label class="lb">Google Gemma model</label>${inp('aiModel')}</div><div></div></div>
+      <div class="muted small mt">For running a Google Gemma server on PC/LAN (e.g. <code>ollama run gemma2</code> or <code>llama-server -hf google/gemma-4-e4a</code>). If using in-browser mobile AI below, you do not need this!</div>
     </div>
     <button class="btn sec w mt" data-a="test">🔌 Test AI connection</button>`)}
-  ${sec(3, '📱', 't-ok', 'On-Device Mobile AI (Zero-Install · $0)', `
-    ${tg('localAiEnabled', '📱 Run AI Directly on Device (WebGPU)', 'Zero install! Downloads model into phone browser storage once, then runs 100% offline with zero cloud cost.')}
+  ${sec(3, '📱', 't-ok', 'On-Device Google Gemma AI (Zero-Install · $0)', `
+    ${tg('localAiEnabled', '📱 Run Google Gemma Directly on Device (WebGPU)', 'Zero install! Downloads Google Gemma weights into phone browser storage once, then runs 100% offline with zero cloud cost.')}
     <div style="margin-top:10px">
       <label class="lb">Select Mobile Model</label>
       <select class="f" data-set="localAiModel" id="localAiModelSelect">

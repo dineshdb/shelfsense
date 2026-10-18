@@ -3,33 +3,13 @@ import { CreateMLCEngine, hasModelInCache, deleteModelAllInfoInCache, prebuiltAp
 export const MOBILE_LOCAL_MODELS = {
   'gemma3-1b-it-q4f16_1-MLC': {
     id: 'gemma3-1b-it-q4f16_1-MLC',
-    name: 'Google Gemma 3 1B (Mobile Sweet Spot)',
+    name: 'Google Gemma 3 1B (Recommended On-Device)',
     badge: '⭐ Recommended Mobile',
     badgeCls: 'b-ok',
     size: '~700 MB',
     vram: '711 MB',
-    tag: 'Gemma 3 · Compact & Multilingual',
-    desc: 'Google’s state-of-the-art compact model. Excellent for multi-language grocery billing with low battery draw.'
-  },
-  'SmolLM2-360M-Instruct-q4f16_1-MLC': {
-    id: 'SmolLM2-360M-Instruct-q4f16_1-MLC',
-    name: 'SmolLM2 360M (Ultra-Pocket)',
-    badge: '🪶 Ultra-Light',
-    badgeCls: 'b-info',
-    size: '~230 MB',
-    vram: '376 MB',
-    tag: 'Lightest · 230 MB Download',
-    desc: 'Smallest download size. Boots in seconds, ideal for budget phones with 3GB–4GB RAM.'
-  },
-  'Qwen2.5-0.5B-Instruct-q4f16_1-MLC': {
-    id: 'Qwen2.5-0.5B-Instruct-q4f16_1-MLC',
-    name: 'Qwen 2.5 0.5B (Fast Billing)',
-    badge: '⚡ Fast Multilingual',
-    badgeCls: 'b-warn',
-    size: '~350 MB',
-    vram: '945 MB',
-    tag: 'Fast · Strong Hindi/Regional Numbers',
-    desc: 'High precision for retail units, quantities, fractions, and multi-item cashier orders.'
+    tag: 'Google Gemma 3 · Compact & Multilingual',
+    desc: 'Google’s state-of-the-art compact open model. Excellent for multi-language grocery billing with low battery draw.'
   },
   'gemma-2-2b-it-q4f16_1-MLC': {
     id: 'gemma-2-2b-it-q4f16_1-MLC',
@@ -38,8 +18,8 @@ export const MOBILE_LOCAL_MODELS = {
     badgeCls: 'b-slow',
     size: '~1.4 GB',
     vram: '1.9 GB',
-    tag: 'Full Accuracy · Wi-Fi Recommended',
-    desc: 'Higher capacity model for complex store analytics. Recommended for 8GB+ RAM phones, tablets, or PC.'
+    tag: 'Google Gemma 2 · Full Accuracy',
+    desc: 'Higher capacity Google Gemma model for complex store analytics. Recommended for 8GB+ RAM phones, tablets, or PC.'
   }
 };
 
