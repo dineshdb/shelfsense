@@ -270,6 +270,8 @@ function normalizeModelParse(r, text, products) {
       query: itemQuery || "?",
       qty: q,
       unit: VALID_UNITS.has(unitStr) ? unitStr : null,
+      cost: it.cost != null && isFinite(+it.cost) ? +it.cost : (p?.cost || null),
+      price: it.price != null && isFinite(+it.price) ? +it.price : (p?.price || null),
       productId: p ? p.id : null,
     };
   });
@@ -376,6 +378,22 @@ function localCommandParse(text, products = []) {
   const isRestock = /(\breceived\b|\baaya\b|\bstock\b|\bmangwaya\b|\brestock\b|\binward\b|आया|स्टॉक)/i.test(clean);
   const defaultIntent = isRestock ? 'restock' : 'sale';
 
+  // 3b. Extract cost and sell price if present (e.g. "cost 135", "kharid 135", "sell 160", "price 160", "bechna 160")
+  let globalCost = null;
+  let globalPrice = null;
+
+  const costMatch = clean.match(/(?:cost|kharid|buy\s*price|buy|purchase|laagat)\s*[:=]?\s*(\d+(?:\.\d+)?)/i);
+  if (costMatch) {
+    globalCost = parseFloat(costMatch[1]);
+    clean = clean.replace(costMatch[0], ' ');
+  }
+
+  const priceMatch = clean.match(/(?:sell\s*price|sell\s*at|sell|price|mrp|rate|bechna|bikri)\s*[:=]?\s*(\d+(?:\.\d+)?)/i);
+  if (priceMatch) {
+    globalPrice = parseFloat(priceMatch[1]);
+    clean = clean.replace(priceMatch[0], ' ');
+  }
+
   // 4. Clean away conversational words and command wrappers
   clean = clean
     .replace(/(?:sold|sell|sale|give\s*me|give|diya|becha|bikri|de\s*do|dena|mangwaya|received|restock|add|want|i\s*want|chahiye|mangta|please|kripya|put|daal\s*do|rakh\s*do|pack\s*karo|pack\s*kar\s*do)\b/gi, '')
@@ -414,12 +432,21 @@ function localCommandParse(text, products = []) {
     let qty = 1;
     let unit = null;
 
+    let cost = globalCost;
+    let price = globalPrice;
+
     const words = c.split(/\s+/);
     let remWords = [];
 
     for (let i = 0; i < words.length; i++) {
       const w = words[i].toLowerCase();
-      if (!isNaN(parseFloat(w)) && isFinite(w)) {
+      if (/^(cost|kharid|buy|purchase|laagat)$/i.test(w) && i + 1 < words.length && !isNaN(parseFloat(words[i + 1]))) {
+        cost = parseFloat(words[i + 1]);
+        i++;
+      } else if (/^(sell|price|mrp|rate|bechna|bikri)$/i.test(w) && i + 1 < words.length && !isNaN(parseFloat(words[i + 1]))) {
+        price = parseFloat(words[i + 1]);
+        i++;
+      } else if (!isNaN(parseFloat(w)) && isFinite(w)) {
         qty = parseFloat(w);
       } else if (numberMap[w] !== undefined) {
         qty = numberMap[w];
@@ -435,6 +462,8 @@ function localCommandParse(text, products = []) {
         unit = 'pack';
       } else if (/^(dozen|doz|darjan|दर्जन)$/i.test(w)) {
         unit = 'dozen';
+      } else if (/^(bottle|bottles|can|cans|bag|bags|box|boxes|piece|pieces|dabba)$/i.test(w)) {
+        if (!unit) unit = 'pack';
       } else {
         remWords.push(words[i]);
       }
@@ -448,6 +477,8 @@ function localCommandParse(text, products = []) {
         query: queryProduct,
         qty: qty || 1,
         unit: unit || match.product?.unit || 'unit',
+        cost: cost != null ? cost : (match.product?.cost || null),
+        price: price != null ? price : (match.product?.price || null),
         productId: match.product ? match.product.id : null
       });
     }
@@ -461,6 +492,8 @@ function localCommandParse(text, products = []) {
       query: clean,
       qty: 1,
       unit: match.product?.unit || 'unit',
+      cost: null,
+      price: match.product?.price || null,
       productId: match.product ? match.product.id : null
     });
   }
@@ -472,6 +505,35 @@ function localCommandParse(text, products = []) {
     paymentMode,
     items
   };
+}
+
+/**
+ * Parses spoken product intake lines into structured product inwarding entries with
+ * extracted names, counts, units, cost prices, selling prices, and category inferences.
+ */
+function parseVoiceIntake(text, products = []) {
+  if (!text || !text.trim()) return [];
+  const parsed = localCommandParse(text, products);
+  const items = parsed.items || [];
+  return items.map(it => {
+    const m = matchProduct(it.query, products);
+    const p = m.product;
+    const cleanName = p ? p.name : (it.query ? it.query.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ') : 'Product');
+    const unitCost = it.cost != null && it.cost > 0 ? +it.cost : (p?.cost || null);
+    const sellPrice = it.price != null && it.price > 0 ? +it.price : (p?.price || (unitCost ? +(unitCost * 1.35).toFixed(2) : null));
+    return {
+      name: cleanName,
+      category: p?.category || 'Other',
+      count: Math.max(1, +it.qty || 1),
+      unit: it.unit || p?.unit || 'unit',
+      cost: unitCost,
+      price: sellPrice,
+      confidence: m.score || 0.95,
+      include: true,
+      matchId: p?.id || null,
+      photosCount: 1
+    };
+  });
 }
 
 /**
@@ -538,4 +600,4 @@ function aggregateScanDetections(dets = [], existingProducts = []) {
   };
 }
 
-export const Core = { strip, matchProduct, convertQty, normalizeModelParse, analyze, dailySeries, localCommandParse, aggregateScanDetections };
+export const Core = { strip, matchProduct, convertQty, normalizeModelParse, analyze, dailySeries, localCommandParse, aggregateScanDetections, parseVoiceIntake };

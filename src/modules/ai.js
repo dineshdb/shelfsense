@@ -159,11 +159,13 @@ Return ONLY a valid JSON object (no Markdown code fences):
       "product": string from inventory catalog or null,
       "heard": string spoken by owner,
       "qty": number,
-      "unit": "kg" | "g" | "L" | "ml" | "unit" | "pack" | "dozen" | null
+      "unit": "kg" | "g" | "L" | "ml" | "unit" | "pack" | "dozen" | null,
+      "cost": number (purchase/kharid cost if spoken) or null,
+      "price": number (selling/bechna price/mrp if spoken) or null
     }
   ]
 }
-Note: sold / becha / bikri / diya / sell / de do = "sale"; received / aaya / stock aaya / mangwaya = "restock".`;
+Note: sold / becha / bikri / diya / sell / de do = "sale"; received / aaya / stock aaya / mangwaya / naya item = "restock".`;
 
   if (primaryEngine === 'gemma') {
     // STRICT GEMMA / ON-DEVICE MODE: Guarantee zero cloud costs and zero Gemini quota usage!

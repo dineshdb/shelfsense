@@ -341,3 +341,31 @@ test("aggregateScanDetections: preserves photo-scoped bounding boxes for each im
   assert.deepEqual(salt.boxes[1], [500, 600, 700, 800]);
   assert.equal(salt.boxes[0], undefined);
 });
+
+test("localCommandParse: extracts cost and price from English and Hindi phrases", () => {
+  const res1 = Core.localCommandParse("15 bottle Fortune Oil cost 135 sell 160", PRODUCTS);
+  assert.equal(res1.items.length, 1);
+  assert.equal(res1.items[0].qty, 15);
+  assert.equal(res1.items[0].cost, 135);
+  assert.equal(res1.items[0].price, 160);
+
+  const res2 = Core.localCommandParse("20 packet Parle-G kharid 20 bechna 25", PRODUCTS);
+  assert.equal(res2.items.length, 1);
+  assert.equal(res2.items[0].qty, 20);
+  assert.equal(res2.items[0].cost, 20);
+  assert.equal(res2.items[0].price, 25);
+});
+
+test("parseVoiceIntake: parses spoken intake into reviewable inventory detections", () => {
+  const items = Core.parseVoiceIntake("15 bottle Fortune Oil cost 135 sell 160", PRODUCTS);
+  assert.equal(items.length, 1);
+  assert.equal(items[0].name, "Fortune Oil");
+  assert.equal(items[0].count, 15);
+  assert.equal(items[0].cost, 135);
+  assert.equal(items[0].price, 160);
+  assert.equal(items[0].include, true);
+
+  const empty = Core.parseVoiceIntake("", PRODUCTS);
+  assert.deepEqual(empty, []);
+});
+

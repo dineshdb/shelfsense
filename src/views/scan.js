@@ -9,6 +9,7 @@ export function vScan(S, U) {
   const sc = U.scan;
   const rcpt = sc.mode === 'rcpt';
   const barcode = sc.mode === 'barcode';
+  const voice = sc.mode === 'voice';
   const ready = barcode ? true : aiReady();
   const gate = barcode ? false : !ready;
   const cur = set().currency;
@@ -16,14 +17,43 @@ export function vScan(S, U) {
   const staged = sc.images || [];
   const imgCount = staged.length;
 
-  let o = `<div class="scangrid"><div class="card"><div class="ch"><h2><span class="ico t-ok">${barcode ? '🏷️' : rcpt ? '📄' : '📸'}</span>${barcode ? 'Scan a barcode' : rcpt ? 'Inward delivery bill' : 'Scan the store'}</h2><span class="sub">${barcode ? (hasBarcodeDetector ? 'Native Scanner' : 'Barcode') : ready ? aiLabel() : 'Needs AI'}</span></div>
-  <div class="chips" style="margin-top:0">${[['shelf', '🧺 Shelf'], ['rcpt', '📄 Inward Bill'], ['barcode', '🏷️ Barcode']].map(([v, l]) => `<button class="chip ${sc.mode === v ? 'on' : ''}" data-a="scanmode" data-v="${v}">${l}</button>`).join('')}</div>
-  <div class="viewer">
-    ${sc.camOn && !sc.image ? `<video id="video" playsinline muted autoplay></video><span class="corner c1"></span><span class="corner c2"></span><span class="corner c3"></span><span class="corner c4"></span><div class="laser"></div>` : ''}
-    ${sc.image ? `<img id="shot" src="${sc.image}"><canvas id="shotCv"></canvas>` : ''}
-    ${!sc.camOn && !sc.image ? `<div class="ph"><div class="scanico">${barcode ? '🏷️' : rcpt ? '📄' : ICONS.scan}</div><b style="font-size:14.5px">${barcode ? 'Point camera at any barcode or QR code' : rcpt ? 'Point at supplier invoice or delivery slip' : 'Point at a shelf'}</b><br>${barcode ? 'Instant deterministic product lookup, sales checkout and restock.' : rcpt ? `Photograph up to ${maxImages} invoice pages — AI merges lines, costs and margins.` : `Take up to ${maxImages} shelf photos for complete aisle inventory.`}</div>` : ''}
-    ${sc.busy ? `<div class="busy"><div><div class="spin"></div>${esc(sc.status || 'Analyzing photos…')}</div></div>` : ''}
-  </div>`;
+  let o = `<div class="scangrid"><div class="card"><div class="ch"><h2><span class="ico t-ok">${barcode ? '🏷️' : rcpt ? '📄' : voice ? '🎙️' : '📸'}</span>${barcode ? 'Scan a barcode' : rcpt ? 'Inward delivery bill' : voice ? 'Voice Product Intake' : 'Stock Intake Hub'}</h2><span class="sub">${barcode ? (hasBarcodeDetector ? 'Native Scanner' : 'Barcode') : voice ? 'Hands-Free Stock Inwarding' : ready ? aiLabel() : 'Needs AI'}</span></div>
+  <div class="chips" style="margin-top:0">${[['shelf', '🧺 Shelf Vision'], ['rcpt', '📄 Inward Bill'], ['barcode', '🏷️ Barcode'], ['voice', '🎙️ Voice Intake']].map(([v, l]) => `<button class="chip ${sc.mode === v ? 'on' : ''}" data-a="scanmode" data-v="${v}">${l}</button>`).join('')}</div>`;
+
+  if (voice) {
+    const isRec = U.voice?.recording && sc.voiceRecording;
+    o += `<div class="viewer" style="min-height:210px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:18px;background:var(--card);text-align:center">
+      <div style="position:relative;margin-bottom:10px">
+        <button class="btn ${isRec ? 'danger' : 'pri'}" data-a="voiceIntakeMic" style="width:68px;height:68px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:26px;padding:0;box-shadow:0 6px 18px rgba(0,0,0,0.18);transition:all 0.2s" title="${isRec ? 'Stop listening' : 'Start speaking'}">
+          ${isRec ? '⏹️' : '🎙️'}
+        </button>
+        ${isRec ? `<span style="position:absolute;top:-3px;right:-3px;width:14px;height:14px;background:var(--bad);border-radius:50%;animation:pulse 1s infinite;border:2px solid var(--card)"></span>` : ''}
+      </div>
+      <b style="font-size:15px">${isRec ? '🎙️ Listening... speak product details' : 'Tap to speak incoming products'}</b>
+      <div class="muted small mt" style="max-width:380px;line-height:1.4">
+        Speak product name, quantity, cost, and selling price in English or Hindi.
+      </div>
+      ${sc.voiceText ? `<div class="card mt small" style="background:var(--secondary);border:1px solid var(--border);padding:8px 12px;font-style:italic;max-width:440px">"${esc(sc.voiceText)}"</div>` : ''}
+      ${sc.busy ? `<div class="busy mt"><div><div class="spin"></div>${esc(sc.status || 'Extracting products…')}</div></div>` : ''}
+    </div>
+    <div class="inrow mt">
+      <input class="f" id="voiceIntakeTyped" placeholder="Or type product (e.g. 15 bottle Fortune Oil cost 135 sell 160)...">
+      <button class="btn pri" data-a="voiceIntakeTyped">Add</button>
+    </div>
+    <div class="muted small mt" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+      <span style="font-size:11px">💡 Quick examples:</span>
+      <span class="badge b-info" style="cursor:pointer;font-size:10.5px" data-a="voiceIntakeSample" data-v="15 bottle Fortune Mustard Oil cost 135 sell 160">Fortune Oil</span>
+      <span class="badge b-info" style="cursor:pointer;font-size:10.5px" data-a="voiceIntakeSample" data-v="20 packet Parle-G 250g kharid 20 bechna 25">Parle-G</span>
+      <span class="badge b-info" style="cursor:pointer;font-size:10.5px" data-a="voiceIntakeSample" data-v="10 kg Sugar buy price 38 sell price 44">Sugar</span>
+    </div>`;
+  } else {
+    o += `<div class="viewer">
+      ${sc.camOn && !sc.image ? `<video id="video" playsinline muted autoplay></video><span class="corner c1"></span><span class="corner c2"></span><span class="corner c3"></span><span class="corner c4"></span><div class="laser"></div>` : ''}
+      ${sc.image ? `<img id="shot" src="${sc.image}"><canvas id="shotCv"></canvas>` : ''}
+      ${!sc.camOn && !sc.image ? `<div class="ph"><div class="scanico">${barcode ? '🏷️' : rcpt ? '📄' : ICONS.scan}</div><b style="font-size:14.5px">${barcode ? 'Point camera at any barcode or QR code' : rcpt ? 'Point at supplier invoice or delivery slip' : 'Point at a shelf'}</b><br>${barcode ? 'Instant deterministic product lookup, sales checkout and restock.' : rcpt ? `Photograph up to ${maxImages} invoice pages — AI merges lines, costs and margins.` : `Take up to ${maxImages} shelf photos for complete aisle inventory.`}</div>` : ''}
+      ${sc.busy ? `<div class="busy"><div><div class="spin"></div>${esc(sc.status || 'Analyzing photos…')}</div></div>` : ''}
+    </div>`;
+  }
 
   // Processing Screen with Live Counters
   if (sc.busy) {
@@ -53,7 +83,7 @@ export function vScan(S, U) {
   }
 
   // Staged Photos Tray (Multi-Image)
-  if (!barcode && staged.length > 0 && !sc.busy) {
+  if (!barcode && !voice && staged.length > 0 && !sc.busy) {
     o += `<div style="margin-top:12px;padding:10px 12px;background:var(--secondary);border-radius:var(--radius);border:1px solid var(--border)">
       <div class="flex between" style="align-items:center;margin-bottom:6px">
         <span class="muted small" style="font-weight:600;font-size:12px">📸 Staged Photos (${staged.length}/${maxImages})</span>
@@ -78,32 +108,34 @@ export function vScan(S, U) {
   }
 
   // Camera and Action Buttons
-  if (sc.camOn) {
-    o += `<div class="g2 mt">
-      <button class="btn pri" data-a="capture" ${staged.length >= maxImages ? 'disabled' : ''}>
-        ◉ Snap ${staged.length > 0 ? `(${staged.length + 1}/${maxImages})` : ''}
-      </button>
-      ${staged.length > 0 ? `
-        <button class="btn ok" data-a="startScanAll">🚀 Scan ${staged.length} Photo${staged.length > 1 ? 's' : ''}</button>
-      ` : `
-        <button class="btn ghost" data-a="camoff">✕ Close</button>
-      `}
-    </div>
-    ${staged.length > 0 ? `<button class="btn ghost w mt" data-a="camoff" style="font-size:11px">✕ Stop Camera</button>` : ''}`;
-  } else if (staged.length > 0 && !sc.busy) {
-    o += `<div class="g2 mt">
-      <button class="btn pri" data-a="startScanAll" ${sc.busy ? 'disabled' : ''}>
-        🚀 Scan All (${staged.length} Photo${staged.length > 1 ? 's' : ''})
-      </button>
-      <button class="btn sec" data-a="cam" ${staged.length >= maxImages ? 'disabled' : ''}>
-        🎥 + Snap more
-      </button>
-    </div>`;
-  } else if (!sc.busy) {
-    o += `<div class="g2 mt">
-      <button class="btn pri" data-a="cam" ${gate ? 'disabled' : ''}>🎥 Live camera</button>
-      <button class="btn sec" data-a="pick" data-v="photoIn" ${gate ? 'disabled' : ''}>🖼️ ${barcode ? 'Barcode photo' : rcpt ? `Invoice photos (1–${maxImages})` : `Photos (1–${maxImages})`}</button>
-    </div>`;
+  if (!voice) {
+    if (sc.camOn) {
+      o += `<div class="g2 mt">
+        <button class="btn pri" data-a="capture" ${staged.length >= maxImages ? 'disabled' : ''}>
+          ◉ Snap ${staged.length > 0 ? `(${staged.length + 1}/${maxImages})` : ''}
+        </button>
+        ${staged.length > 0 ? `
+          <button class="btn ok" data-a="startScanAll">🚀 Scan ${staged.length} Photo${staged.length > 1 ? 's' : ''}</button>
+        ` : `
+          <button class="btn ghost" data-a="camoff">✕ Close</button>
+        `}
+      </div>
+      ${staged.length > 0 ? `<button class="btn ghost w mt" data-a="camoff" style="font-size:11px">✕ Stop Camera</button>` : ''}`;
+    } else if (staged.length > 0 && !sc.busy) {
+      o += `<div class="g2 mt">
+        <button class="btn pri" data-a="startScanAll" ${sc.busy ? 'disabled' : ''}>
+          🚀 Scan All (${staged.length} Photo${staged.length > 1 ? 's' : ''})
+        </button>
+        <button class="btn sec" data-a="cam" ${staged.length >= maxImages ? 'disabled' : ''}>
+          🎥 + Snap more
+        </button>
+      </div>`;
+    } else if (!sc.busy) {
+      o += `<div class="g2 mt">
+        <button class="btn pri" data-a="cam" ${gate ? 'disabled' : ''}>🎥 Live camera</button>
+        <button class="btn sec" data-a="pick" data-v="photoIn" ${gate ? 'disabled' : ''}>🖼️ ${barcode ? 'Barcode photo' : rcpt ? `Invoice photos (1–${maxImages})` : `Photos (1–${maxImages})`}</button>
+      </div>`;
+    }
   }
 
   if (barcode) {
@@ -143,9 +175,13 @@ export function vScan(S, U) {
       <div class="muted small mt">Supports EAN-13, UPC-A, Code 128, QR codes, and more using your browser's native hardware scanner.</div></div>`;
     }
   } else if (!sc.dets.length && !sc.busy) {
-    o += `<div class="card"><div class="ch"><h2><span class="ico t-info">${rcpt ? '📄' : '🔎'}</span>${rcpt ? 'Inward delivery lines' : 'Found products'}</h2></div>
-    ${rcpt ? `<div class="empty"><span class="e">📄</span>Photograph up to ${maxImages} printed or handwritten supplier bill pages — AI merges items, quantities, costs and margins for 1-tap stock inwarding.</div>
+    o += `<div class="card"><div class="ch"><h2><span class="ico t-info">${voice ? '🎙️' : rcpt ? '📄' : barcode ? '🏷️' : '🔎'}</span>${voice ? 'Voice product lines' : rcpt ? 'Inward delivery lines' : barcode ? 'Barcode checkout & intake' : 'Found products'}</h2></div>
+    ${voice ? `<div class="empty"><span class="e">🎙️</span>Speak product deliveries hands-free — AI automatically extracts product names, pack sizes, inward quantities, wholesale costs, and retail margins.</div>
+    <div class="muted small mt">Supports English, Hindi, and Hinglish numbers and units. All recognized products land below for 1-tap stock update.</div>`
+    : rcpt ? `<div class="empty"><span class="e">📄</span>Photograph up to ${maxImages} printed or handwritten supplier bill pages — AI merges items, quantities, costs and margins for 1-tap stock inwarding.</div>
     <div class="muted small mt">Wholesale unit costs update inventory cost price; margins are calculated automatically and stock is logged to the ledger.</div>`
+    : barcode ? `<div class="empty"><span class="e">🏷️</span>Point camera at any UPC, EAN, or QR barcode to instantly look up stock, ring up a sale, or log incoming goods.</div>
+    <div class="muted small mt">Supports EAN-13, UPC-A, Code 128, QR codes, and more using your browser's native hardware scanner.</div>`
     : `<div class="empty"><span class="e">🔍</span>Capture up to ${maxImages} shelf photos and everything the AI recognizes lands here — check names, quantities and prices, then save to inventory.</div>
     <div class="muted small mt">Use <b>Live camera</b> to multi-snap shelf tiers, or <b>Photos</b> to upload shots. Detection runs with ${aiLabel()}.</div>`}</div>`;
   }
@@ -154,8 +190,8 @@ export function vScan(S, U) {
     const sum = sc.dets.filter(d => d.include).reduce((s, d) => s + (+d.count || 0) * (+d.cost || 0), 0);
     const totUnits = sc.dets.filter(d => d.include).reduce((s, d) => s + (+d.count || 0), 0);
     const totOk = sc.rcpt && sc.rcpt.total != null && Math.abs(sum - sc.rcpt.total) <= Math.max(1, sc.rcpt.total * 0.02);
-    o += `<div class="card"><div class="ch"><h2><span class="ico t-info">${rcpt ? '📄' : '🔎'}</span>${sc.dets.length} ${rcpt ? 'inward line' + (sc.dets.length > 1 ? 's' : '') : 'products found'}</h2>
-      <span class="badge b-ok" style="font-size:11px">🔢 ${totUnits} total units · ${imgCount || 1} photo${imgCount > 1 ? 's' : ''}</span>
+    o += `<div class="card"><div class="ch"><h2><span class="ico t-info">${voice ? '🎙️' : rcpt ? '📄' : '🔎'}</span>${sc.dets.length} ${voice ? 'voice inward line' + (sc.dets.length > 1 ? 's' : '') : rcpt ? 'inward line' + (sc.dets.length > 1 ? 's' : '') : 'products found'}</h2>
+      <span class="badge b-ok" style="font-size:11px">🔢 ${totUnits} total units ${!voice ? `· ${imgCount || 1} photo` + (imgCount > 1 ? 's' : '') : ''}</span>
     </div>
     ${rcpt && sc.rcpt && (sc.rcpt.store || sc.rcpt.invoiceNo || sc.rcpt.total != null) ? `<div class="muted small" style="margin:-4px 0 10px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
       ${sc.rcpt.store ? `<span class="badge b-ok" style="font-weight:600">🏢 ${esc(sc.rcpt.store)}</span>` : ''}
